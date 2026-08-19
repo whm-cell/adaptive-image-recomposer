@@ -1,0 +1,118 @@
+{
+  "schema_version": "0.1",
+  "job_id": "immune-protein-comparison-demo",
+  "source": {
+    "path": "/fixture/immune-protein-comparison.png",
+    "role": "edit_target",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "width": 1080,
+    "height": 1440,
+    "aspect_ratio": 0.75,
+    "aspect_class": "portrait"
+  },
+  "intent": {
+    "output_usage": "social product comparison poster",
+    "target_delta": "radical",
+    "target_aspect": "landscape",
+    "exact_text_required": true
+  },
+  "content": {
+    "type": "multi_product_comparison",
+    "item_count": 9,
+    "text_density": "high",
+    "objects": [
+      {"id": "product-mythsky", "type": "product", "label": "Mythsky", "bbox": [0.33, 0.15, 0.44, 0.32], "preserve": "lock_pixels", "evidence": "visual", "verified": true},
+      {"id": "product-le", "type": "product", "label": "乐*", "bbox": [0.58, 0.15, 0.71, 0.32], "preserve": "lock_pixels", "evidence": "visual", "verified": true},
+      {"id": "product-yot", "type": "product", "label": "Y*OT", "bbox": [0.18, 0.43, 0.32, 0.60], "preserve": "lock_pixels", "evidence": "visual", "verified": true},
+      {"id": "product-bissun", "type": "product", "label": "B*issun", "bbox": [0.44, 0.43, 0.57, 0.61], "preserve": "lock_pixels", "evidence": "visual", "verified": true},
+      {"id": "product-ke-en", "type": "product", "label": "可*恩", "bbox": [0.70, 0.43, 0.84, 0.61], "preserve": "lock_pixels", "evidence": "visual", "verified": true},
+      {"id": "product-smal", "type": "product", "label": "S*MAL", "bbox": [0.09, 0.72, 0.23, 0.89], "preserve": "lock_pixels", "evidence": "visual", "verified": true},
+      {"id": "product-kwi", "type": "product", "label": "K*WI", "bbox": [0.30, 0.72, 0.46, 0.90], "preserve": "lock_pixels", "evidence": "visual", "verified": true},
+      {"id": "product-kang", "type": "product", "label": "康*", "bbox": [0.55, 0.72, 0.69, 0.89], "preserve": "lock_pixels", "evidence": "visual", "verified": true},
+      {"id": "product-gao", "type": "product", "label": "高*", "bbox": [0.75, 0.72, 0.89, 0.89], "preserve": "lock_pixels", "evidence": "visual", "verified": true}
+    ],
+    "text_blocks": [
+      {"id": "headline", "text": "免疫球蛋白：⬆️免疫选哪款", "kind": "headline", "language": "zh-Hans", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
+      {"id": "callout-full", "text": "全面养护", "kind": "callout", "language": "zh-Hans", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
+      {"id": "callout-basic", "text": "基础补充", "kind": "callout", "language": "zh-Hans", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
+      {"id": "mythsky-name", "text": "Mythsky", "kind": "item_name", "language": "en", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
+      {"id": "mythsky-dose", "text": "含量400mg", "kind": "data", "language": "zh-Hans", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
+      {"id": "mythsky-combo", "text": "复配成份：7种", "kind": "data", "language": "zh-Hans", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
+      {"id": "le-name", "text": "乐*", "kind": "item_name", "language": "zh-Hans", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
+      {"id": "le-dose", "text": "含量155mg", "kind": "data", "language": "zh-Hans", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
+      {"id": "le-combo", "text": "复配成份：2种", "kind": "data", "language": "zh-Hans", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
+      {"id": "yot-name", "text": "Y*OT", "kind": "item_name", "language": "en", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
+      {"id": "yot-dose", "text": "含量210mg", "kind": "data", "language": "zh-Hans", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
+      {"id": "yot-combo", "text": "复配成份：4种", "kind": "data", "language": "zh-Hans", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
+      {"id": "bissun-name", "text": "B*issun", "kind": "item_name", "language": "en", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
+      {"id": "bissun-dose", "text": "含量100mg", "kind": "data", "language": "zh-Hans", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
+      {"id": "bissun-combo", "text": "复配成份：3种", "kind": "data", "language": "zh-Hans", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
+      {"id": "keen-name", "text": "可*恩", "kind": "item_name", "language": "zh-Hans", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
+      {"id": "keen-dose", "text": "含量280mg", "kind": "data", "language": "zh-Hans", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
+      {"id": "keen-combo", "text": "复配成份：3种", "kind": "data", "language": "zh-Hans", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
+      {"id": "smal-name", "text": "S*MAL", "kind": "item_name", "language": "en", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
+      {"id": "smal-dose", "text": "含量100mg", "kind": "data", "language": "zh-Hans", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
+      {"id": "smal-combo", "text": "复配成份：3种", "kind": "data", "language": "zh-Hans", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
+      {"id": "kwi-name", "text": "K*WI", "kind": "item_name", "language": "en", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
+      {"id": "kwi-dose", "text": "含量210mg", "kind": "data", "language": "zh-Hans", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
+      {"id": "kwi-combo", "text": "复配成份：3种", "kind": "data", "language": "zh-Hans", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
+      {"id": "kang-name", "text": "康*", "kind": "item_name", "language": "zh-Hans", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
+      {"id": "kang-dose", "text": "含量200mg", "kind": "data", "language": "zh-Hans", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
+      {"id": "kang-combo", "text": "复配成份：2种", "kind": "data", "language": "zh-Hans", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
+      {"id": "gao-name", "text": "高*", "kind": "item_name", "language": "zh-Hans", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
+      {"id": "gao-dose", "text": "含量100mg", "kind": "data", "language": "zh-Hans", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
+      {"id": "gao-combo", "text": "复配成份：3种", "kind": "data", "language": "zh-Hans", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
+      {"id": "footnote", "text": "以上数据均来自于官方，排名不分先后", "kind": "footnote", "language": "zh-Hans", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true}
+    ]
+  },
+  "source_layout": {
+    "topology": "yellow-pink split background with a regular product card grid",
+    "reading_path": "headline then top-to-bottom row scan",
+    "grouping": "2+3+4 product rows",
+    "hierarchy": ["headline", "two callouts", "product names", "bottles", "data cards", "footnote"],
+    "containers": ["speech bubbles", "white rounded data cards"],
+    "palette": ["pale yellow", "pink", "black", "orange", "blue"],
+    "motifs": ["green star decorations"]
+  },
+  "preservation": {
+    "must_preserve_text_ids": [
+      "headline", "callout-full", "callout-basic",
+      "mythsky-name", "mythsky-dose", "mythsky-combo",
+      "le-name", "le-dose", "le-combo",
+      "yot-name", "yot-dose", "yot-combo",
+      "bissun-name", "bissun-dose", "bissun-combo",
+      "keen-name", "keen-dose", "keen-combo",
+      "smal-name", "smal-dose", "smal-combo",
+      "kwi-name", "kwi-dose", "kwi-combo",
+      "kang-name", "kang-dose", "kang-combo",
+      "gao-name", "gao-dose", "gao-combo", "footnote"
+    ],
+    "protected_regions": [
+      {"id": "region-mythsky", "bbox": [0.33, 0.15, 0.44, 0.32], "reason": "product bottle and visible label pixels", "allowed_transforms": ["crop", "scale", "translate", "frame"]},
+      {"id": "region-le", "bbox": [0.58, 0.15, 0.71, 0.32], "reason": "product bottle and visible label pixels", "allowed_transforms": ["crop", "scale", "translate", "frame"]},
+      {"id": "region-yot", "bbox": [0.18, 0.43, 0.32, 0.60], "reason": "product bottle and visible label pixels", "allowed_transforms": ["crop", "scale", "translate", "frame"]},
+      {"id": "region-bissun", "bbox": [0.44, 0.43, 0.57, 0.61], "reason": "product bottle and visible label pixels", "allowed_transforms": ["crop", "scale", "translate", "frame"]},
+      {"id": "region-ke-en", "bbox": [0.70, 0.43, 0.84, 0.61], "reason": "product bottle and visible label pixels", "allowed_transforms": ["crop", "scale", "translate", "frame"]},
+      {"id": "region-smal", "bbox": [0.09, 0.72, 0.23, 0.89], "reason": "product bottle and visible label pixels", "allowed_transforms": ["crop", "scale", "translate", "frame"]},
+      {"id": "region-kwi", "bbox": [0.30, 0.72, 0.46, 0.90], "reason": "product bottle and visible label pixels", "allowed_transforms": ["crop", "scale", "translate", "frame"]},
+      {"id": "region-kang", "bbox": [0.55, 0.72, 0.69, 0.89], "reason": "product bottle and visible label pixels", "allowed_transforms": ["crop", "scale", "translate", "frame"]},
+      {"id": "region-gao", "bbox": [0.75, 0.72, 0.89, 0.89], "reason": "product bottle and visible label pixels", "allowed_transforms": ["crop", "scale", "translate", "frame"]}
+    ],
+    "forbidden_inference": [
+      "blurred bottle-label microcopy",
+      "masked brand characters",
+      "health claims not present in verified source copy"
+    ],
+    "source_features_to_avoid": [
+      "yellow-pink split background",
+      "2+3+4 product grid",
+      "speech bubbles",
+      "white repeated data cards",
+      "green star decorations"
+    ]
+  },
+  "render": {
+    "preferred_mode": "auto"
+  },
+  "uncertainties": []
+}

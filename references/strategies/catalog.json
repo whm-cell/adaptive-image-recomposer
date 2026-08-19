@@ -1,0 +1,593 @@
+{
+  "catalog_version": "0.2",
+  "architecture": {
+    "selection_order": ["outcome_contract", "content_archetype", "direction_family", "structural_kernel", "visual_system", "renderer"],
+    "policy": "Explore many structure families, pair each shortlisted kernel with one visual system, then compile exactly one lane. Never concatenate the whole library into one prompt."
+  },
+  "families": [
+    {
+      "id": "flow-path",
+      "title": "Flow and Path",
+      "leaf": "flow-path.md",
+      "description": "Continuous paths turn discrete nodes into a guided journey.",
+      "defaults": {
+        "description": "A continuous directional path that guides semantic nodes through the canvas.",
+        "supports": ["multi_product_comparison", "single_product_poster", "dense_infographic", "editorial_photo", "evidence_comparison", "illustration_freeform", "mixed_unknown"],
+        "text_density": ["low", "medium", "high"],
+        "item_range": [1, 24],
+        "renderers": ["model-led", "generative", "hybrid", "locked-composite", "deterministic"],
+        "aspects": ["portrait", "landscape", "square", "panoramic"],
+        "supports_protected_regions": true,
+        "preferred_content_types": ["multi_product_comparison", "dense_infographic"],
+        "visual_affinities": ["warm-editorial-paper", "playful-pop", "organic-wellness"]
+      },
+      "kernels": [
+        {
+          "id": "serpentine-flow",
+          "title": "Serpentine Flow",
+          "topology_family": "continuous-serpentine-path",
+          "reading_path": "alternating-down-a-single-curved-spine",
+          "changed_axes": ["topology", "reading_path", "hierarchy", "grouping", "container_grammar", "palette_material", "text_image_relationship"],
+          "layout_tokens": ["serpentine path", "alternating nodes", "continuous curve"],
+          "prompt_hints": ["Use one continuous curved path as the organizing gesture.", "Alternate indivisible semantic nodes across the path with deliberate scale changes.", "Keep the path legible without turning it into two disguised columns."],
+          "ideal_item_range": [6, 12]
+        },
+        {
+          "id": "spiral-unfold",
+          "title": "Spiral Unfold",
+          "topology_family": "inward-or-outward-spiral",
+          "reading_path": "outer-entry-to-focal-core",
+          "changed_axes": ["topology", "reading_path", "hierarchy", "grouping", "container_grammar", "palette_material", "text_image_relationship"],
+          "layout_tokens": ["spiral", "focal core", "concentric journey"],
+          "prompt_hints": ["Build a loose spiral that progressively changes node scale and density.", "Use one focal core and a clear outer entry point.", "Avoid equal rings or a decorative swirl with no reading order."],
+          "ideal_item_range": [4, 14]
+        },
+        {
+          "id": "zigzag-ribbon",
+          "title": "Zigzag Ribbon",
+          "topology_family": "folded-directional-ribbon",
+          "reading_path": "angular-switchback-sequence",
+          "changed_axes": ["topology", "reading_path", "hierarchy", "grouping", "container_grammar", "palette_material", "text_image_relationship"],
+          "layout_tokens": ["zigzag ribbon", "switchback", "folded path"],
+          "prompt_hints": ["Use an angular folded ribbon to create decisive directional turns.", "Place one semantic node at each major turn and vary the size of turns.", "Keep the ribbon structural, not a decorative arrow overlay."],
+          "ideal_item_range": [3, 12]
+        },
+        {
+          "id": "river-confluence",
+          "title": "River Confluence",
+          "topology_family": "branching-stream-confluence",
+          "reading_path": "multiple-tributaries-merge-into-one-conclusion",
+          "changed_axes": ["topology", "reading_path", "hierarchy", "grouping", "container_grammar", "palette_material", "text_image_relationship"],
+          "layout_tokens": ["tributaries", "confluence", "branching streams"],
+          "prompt_hints": ["Group related nodes on separate tributaries that converge on one conclusion.", "Use line weight and spacing to distinguish branches.", "Do not imply causality or ranking unless the source states it."],
+          "ideal_item_range": [5, 18]
+        }
+      ]
+    },
+    {
+      "id": "editorial-hierarchy",
+      "title": "Editorial Hierarchy",
+      "leaf": "editorial-hierarchy.md",
+      "description": "Publication grammar creates hierarchy through leads, columns, pull facts, and captions.",
+      "defaults": {
+        "description": "A publication-led composition with asymmetric editorial hierarchy.",
+        "supports": ["multi_product_comparison", "single_product_poster", "dense_infographic", "editorial_photo", "evidence_comparison", "screenshot_ui", "illustration_freeform", "mixed_unknown"],
+        "text_density": ["low", "medium", "high"],
+        "item_range": [1, 30],
+        "renderers": ["model-led", "generative", "hybrid", "locked-composite", "deterministic"],
+        "aspects": ["portrait", "landscape", "square", "panoramic"],
+        "supports_protected_regions": true,
+        "preferred_content_types": ["dense_infographic", "editorial_photo", "multi_product_comparison"],
+        "visual_affinities": ["swiss-clinical", "warm-editorial-paper", "monochrome-ink", "retro-riso"]
+      },
+      "kernels": [
+        {
+          "id": "feature-cover-stack",
+          "title": "Feature Cover Stack",
+          "topology_family": "cover-led-overlapping-feature-stack",
+          "reading_path": "oversized-lead-then-descending-feature-stack",
+          "changed_axes": ["topology", "reading_path", "hierarchy", "grouping", "container_grammar", "palette_material", "text_image_relationship"],
+          "layout_tokens": ["feature cover", "overlapping stack", "lead headline"],
+          "prompt_hints": ["Open with an oversized editorial lead and one dominant image zone.", "Stack secondary nodes with controlled overlaps and uneven rhythm.", "Avoid a uniform catalogue or dashboard."],
+          "ideal_item_range": [1, 10]
+        },
+        {
+          "id": "newspaper-spread",
+          "title": "Newspaper Spread",
+          "topology_family": "lead-story-with-variable-columns",
+          "reading_path": "lead-story-then-columns-and-pull-facts",
+          "changed_axes": ["aspect_ratio", "topology", "reading_path", "hierarchy", "grouping", "container_grammar", "text_image_relationship"],
+          "layout_tokens": ["newspaper spread", "lead story", "variable columns", "pull facts"],
+          "prompt_hints": ["Turn the content into a lead story with variable-width columns and pull facts.", "Use rules and gutters to bind dense copy without repeating cards.", "Make one editorial thesis visibly dominant."],
+          "preferred_aspects": ["landscape", "panoramic"],
+          "ideal_item_range": [5, 24]
+        },
+        {
+          "id": "split-feature-dialogue",
+          "title": "Split Feature Dialogue",
+          "topology_family": "unequal-dialogue-fields",
+          "reading_path": "primary-field-to-counterpoint-and-bridge",
+          "changed_axes": ["topology", "reading_path", "hierarchy", "grouping", "container_grammar", "palette_material", "text_image_relationship"],
+          "layout_tokens": ["unequal split", "dialogue fields", "bridge element"],
+          "prompt_hints": ["Create two intentionally unequal feature fields connected by a bridge element.", "Use the second field as counterpoint rather than a mirrored column.", "Do not reproduce a fifty-fifty source split."],
+          "ideal_item_range": [2, 12]
+        },
+        {
+          "id": "annotated-column-essay",
+          "title": "Annotated Column Essay",
+          "topology_family": "longform-column-with-margin-annotations",
+          "reading_path": "main-essay-flow-with-side-note-detours",
+          "changed_axes": ["topology", "reading_path", "hierarchy", "grouping", "container_grammar", "palette_material", "text_image_relationship"],
+          "layout_tokens": ["column essay", "margin notes", "annotation rail"],
+          "prompt_hints": ["Build a strong main narrative column with annotations living in the margins.", "Use callouts as controlled detours that return to the main flow.", "Keep annotations visibly attached to their own semantic nodes."],
+          "ideal_item_range": [3, 18]
+        }
+      ]
+    },
+    {
+      "id": "modular-comparison",
+      "title": "Modular Comparison",
+      "leaf": "modular-comparison.md",
+      "description": "Modules support dense comparison without defaulting to a uniform grid.",
+      "defaults": {
+        "description": "A modular comparison grammar with varied scale, cadence, and grouping.",
+        "supports": ["multi_product_comparison", "single_product_poster", "dense_infographic", "evidence_comparison", "screenshot_ui", "mixed_unknown"],
+        "text_density": ["medium", "high"],
+        "item_range": [2, 40],
+        "renderers": ["model-led", "hybrid", "locked-composite", "deterministic"],
+        "aspects": ["portrait", "landscape", "square", "panoramic"],
+        "supports_protected_regions": true,
+        "preferred_content_types": ["multi_product_comparison", "dense_infographic", "screenshot_ui"],
+        "visual_affinities": ["swiss-clinical", "tech-blueprint", "neo-brutalist", "museum-neutral"]
+      },
+      "kernels": [
+        {
+          "id": "catalogue-bands",
+          "title": "Catalogue Bands",
+          "topology_family": "sequential-variable-height-bands",
+          "reading_path": "band-by-band-with-alternating-emphasis",
+          "changed_axes": ["topology", "reading_path", "hierarchy", "grouping", "container_grammar", "palette_material", "text_image_relationship"],
+          "layout_tokens": ["catalogue bands", "data rails", "variable-height bands"],
+          "prompt_hints": ["Replace cards with variable-height bands and independent data rails.", "Alternate crop, density, and scale from band to band.", "Preserve each item's data as one semantic node."],
+          "ideal_item_range": [5, 24]
+        },
+        {
+          "id": "hero-matrix-break",
+          "title": "Hero Matrix Break",
+          "topology_family": "broken-matrix-with-hero-interruptions",
+          "reading_path": "hero-entry-then-nonuniform-matrix",
+          "changed_axes": ["topology", "reading_path", "hierarchy", "grouping", "container_grammar", "palette_material", "text_image_relationship"],
+          "layout_tokens": ["broken matrix", "hero interruption", "spanning module"],
+          "prompt_hints": ["Use a nonuniform matrix interrupted by one or two spanning hero modules.", "Change module proportions and information density by role.", "Do not create equal cards or imply ranking through size without a neutral note."],
+          "ideal_item_range": [6, 20]
+        },
+        {
+          "id": "masonry-clusters",
+          "title": "Masonry Clusters",
+          "topology_family": "clustered-masonry-islands",
+          "reading_path": "largest-cluster-to-neighboring-islands",
+          "changed_axes": ["topology", "reading_path", "hierarchy", "grouping", "container_grammar", "palette_material", "text_image_relationship"],
+          "layout_tokens": ["masonry clusters", "islands", "variable modules"],
+          "prompt_hints": ["Form a few distinct masonry islands rather than one full-canvas grid.", "Give each cluster its own density and anchor.", "Use whitespace channels to establish reading order."],
+          "ideal_item_range": [4, 20]
+        },
+        {
+          "id": "indexed-lanes",
+          "title": "Indexed Lanes",
+          "topology_family": "parallel-lanes-with-cross-index",
+          "reading_path": "index-first-then-lane-scanning",
+          "changed_axes": ["topology", "reading_path", "hierarchy", "grouping", "container_grammar", "palette_material", "text_image_relationship"],
+          "layout_tokens": ["indexed lanes", "cross index", "parallel tracks"],
+          "prompt_hints": ["Organize items on a small number of asymmetrical lanes with a separate index.", "Use one cross-lane signal to connect comparable facts.", "Keep lanes visually distinct from ordinary columns."],
+          "ideal_item_range": [6, 30]
+        }
+      ]
+    },
+    {
+      "id": "radial-network",
+      "title": "Radial and Network",
+      "leaf": "radial-network.md",
+      "description": "Centrality, orbit, and connection create non-linear comparisons.",
+      "defaults": {
+        "description": "A radial or networked composition that organizes supporting nodes around a thesis.",
+        "supports": ["multi_product_comparison", "single_product_poster", "dense_infographic", "evidence_comparison", "illustration_freeform", "mixed_unknown"],
+        "text_density": ["low", "medium", "high"],
+        "item_range": [2, 18],
+        "renderers": ["model-led", "generative", "hybrid", "locked-composite", "deterministic"],
+        "aspects": ["portrait", "landscape", "square"],
+        "supports_protected_regions": true,
+        "preferred_content_types": ["dense_infographic", "illustration_freeform"],
+        "visual_affinities": ["translucent-glass", "tech-blueprint", "playful-pop"]
+      },
+      "kernels": [
+        {
+          "id": "focal-orbit",
+          "title": "Focal Orbit",
+          "topology_family": "central-focal-orbit",
+          "reading_path": "center-outward-clockwise",
+          "changed_axes": ["topology", "reading_path", "hierarchy", "grouping", "container_grammar", "palette_material", "text_image_relationship"],
+          "layout_tokens": ["focal orbit", "central thesis", "clockwise satellites"],
+          "prompt_hints": ["Create one central thesis with a directional orbit of supporting nodes.", "Use scale and connectors to make the clockwise route explicit.", "Keep dense copy outside the orbit on attached rails."],
+          "ideal_item_range": [3, 12]
+        },
+        {
+          "id": "constellation-network",
+          "title": "Constellation Network",
+          "topology_family": "distributed-constellation-graph",
+          "reading_path": "anchor-node-to-connected-clusters",
+          "changed_axes": ["topology", "reading_path", "hierarchy", "grouping", "container_grammar", "palette_material", "text_image_relationship"],
+          "layout_tokens": ["constellation", "network graph", "connected clusters"],
+          "prompt_hints": ["Distribute nodes as a constellation with a few meaningful connections.", "Use one anchor and cluster distance to express categories, not false causality.", "Avoid random floating dots or a decorative network."],
+          "ideal_item_range": [5, 16]
+        },
+        {
+          "id": "radial-wedges",
+          "title": "Radial Wedges",
+          "topology_family": "unequal-radial-sectors",
+          "reading_path": "focal-center-through-clockwise-wedges",
+          "changed_axes": ["topology", "reading_path", "hierarchy", "grouping", "container_grammar", "palette_material", "text_image_relationship"],
+          "layout_tokens": ["radial wedges", "sectors", "clockwise segmentation"],
+          "prompt_hints": ["Use unequal radial sectors as content territories.", "Let one wedge carry the entry point and another the conclusion.", "Do not imply proportional data through wedge size unless verified."],
+          "ideal_item_range": [3, 10]
+        },
+        {
+          "id": "hub-spoke-dashboard",
+          "title": "Hub-Spoke Dashboard",
+          "topology_family": "hub-with-asymmetric-spokes",
+          "reading_path": "hub-summary-to-spoke-details",
+          "changed_axes": ["topology", "reading_path", "hierarchy", "grouping", "container_grammar", "palette_material", "text_image_relationship"],
+          "layout_tokens": ["hub spoke", "central summary", "asymmetric spokes"],
+          "prompt_hints": ["Place a compact summary at the hub and route details along asymmetrical spokes.", "Vary spoke length and node scale by editorial role only.", "Avoid a generic software dashboard look unless selected by the visual system."],
+          "ideal_item_range": [4, 14]
+        }
+      ]
+    },
+    {
+      "id": "spatial-stage",
+      "title": "Spatial Stage",
+      "leaf": "spatial-stage.md",
+      "description": "Objects become exhibits, props, or scenes with controlled depth and separate information rails.",
+      "defaults": {
+        "description": "A spatially staged composition with depth, exhibits, and anchored captions.",
+        "supports": ["multi_product_comparison", "single_product_poster", "dense_infographic", "editorial_photo", "evidence_comparison", "illustration_freeform", "mixed_unknown"],
+        "text_density": ["low", "medium", "high"],
+        "item_range": [1, 18],
+        "renderers": ["model-led", "generative", "hybrid", "locked-composite", "deterministic"],
+        "aspects": ["portrait", "landscape", "square", "panoramic"],
+        "supports_protected_regions": true,
+        "preferred_content_types": ["single_product_poster", "editorial_photo", "multi_product_comparison"],
+        "visual_affinities": ["museum-neutral", "premium-dark-metal", "soft-clay-3d"]
+      },
+      "kernels": [
+        {
+          "id": "museum-exhibit-wall",
+          "title": "Museum Exhibit Wall",
+          "topology_family": "spatial-exhibit-with-caption-rails",
+          "reading_path": "hero-exhibit-then-guided-roaming",
+          "changed_axes": ["topology", "reading_path", "hierarchy", "grouping", "container_grammar", "palette_material", "text_image_relationship"],
+          "layout_tokens": ["exhibit wall", "caption rails", "hero exhibit"],
+          "prompt_hints": ["Treat semantic items as exhibits on a designed wall.", "Use one hero exhibit, smaller satellites, and independent caption rails.", "Vary placement while preserving a deliberate guided route."],
+          "ideal_item_range": [2, 14]
+        },
+        {
+          "id": "scene-shelf",
+          "title": "Scene Shelf",
+          "topology_family": "layered-shelf-scene",
+          "reading_path": "foreground-to-background-then-data-rail",
+          "changed_axes": ["topology", "reading_path", "hierarchy", "grouping", "container_grammar", "palette_material", "text_image_relationship"],
+          "layout_tokens": ["scene shelf", "foreground stage", "depth layers"],
+          "prompt_hints": ["Stage objects across foreground, middle, and background shelf layers.", "Keep exact comparison data on a clear independent rail.", "Use coherent light and shadow without redrawing protected inserts."],
+          "ideal_item_range": [2, 12]
+        },
+        {
+          "id": "isometric-stage",
+          "title": "Isometric Stage",
+          "topology_family": "isometric-platform-system",
+          "reading_path": "largest-platform-to-stepped-satellites",
+          "changed_axes": ["topology", "reading_path", "hierarchy", "grouping", "container_grammar", "palette_material", "text_image_relationship"],
+          "layout_tokens": ["isometric stage", "platforms", "stepped satellites"],
+          "prompt_hints": ["Use a restrained isometric platform system with one leading stage.", "Attach copy to platform edges instead of placing text in perspective.", "Avoid game-board clutter and impossible spatial relationships."],
+          "ideal_item_range": [2, 10]
+        },
+        {
+          "id": "depth-gallery",
+          "title": "Depth Gallery",
+          "topology_family": "perspective-gallery-sequence",
+          "reading_path": "near-frame-through-receding-gallery",
+          "changed_axes": ["topology", "reading_path", "hierarchy", "grouping", "container_grammar", "palette_material", "text_image_relationship"],
+          "layout_tokens": ["depth gallery", "receding frames", "perspective sequence"],
+          "prompt_hints": ["Arrange a sequence of frames that recedes through shallow perspective.", "Use near, middle, and far emphasis to guide reading.", "Keep important text front-facing and legible."],
+          "ideal_item_range": [3, 12]
+        }
+      ]
+    },
+    {
+      "id": "typographic-graphic",
+      "title": "Typographic and Graphic",
+      "leaf": "typographic-graphic.md",
+      "description": "Type, numbers, labels, and graphic fields become the dominant spatial engine.",
+      "defaults": {
+        "description": "A typography-led graphic composition with aggressive scale and directional contrast.",
+        "supports": ["multi_product_comparison", "single_product_poster", "dense_infographic", "editorial_photo", "illustration_freeform", "mixed_unknown"],
+        "text_density": ["low", "medium", "high"],
+        "item_range": [1, 18],
+        "renderers": ["model-led", "generative", "hybrid", "deterministic"],
+        "aspects": ["portrait", "landscape", "square", "panoramic"],
+        "supports_protected_regions": true,
+        "preferred_content_types": ["single_product_poster", "editorial_photo", "illustration_freeform"],
+        "visual_affinities": ["neo-brutalist", "retro-riso", "monochrome-ink", "playful-pop"]
+      },
+      "kernels": [
+        {
+          "id": "diagonal-zine",
+          "title": "Diagonal Zine",
+          "topology_family": "diagonal-asymmetric-zine",
+          "reading_path": "oversized-type-through-diagonal-zigzag",
+          "changed_axes": ["topology", "reading_path", "hierarchy", "grouping", "container_grammar", "palette_material", "text_image_relationship"],
+          "layout_tokens": ["diagonal zine", "oversized type", "asymmetric crop"],
+          "prompt_hints": ["Build an asymmetric diagonal zine with one oversized type field.", "Use deliberate crops and layered depth to make a zigzag route.", "Avoid polite centered symmetry and equal columns."],
+          "ideal_item_range": [1, 8]
+        },
+        {
+          "id": "kinetic-type-islands",
+          "title": "Kinetic Type Islands",
+          "topology_family": "floating-typographic-islands",
+          "reading_path": "largest-word-shape-to-smaller-type-islands",
+          "changed_axes": ["topology", "reading_path", "hierarchy", "grouping", "container_grammar", "palette_material", "text_image_relationship"],
+          "layout_tokens": ["type islands", "kinetic typography", "word shapes"],
+          "prompt_hints": ["Let a few typographic islands define the major spatial masses.", "Nest semantic objects beside—not inside—critical letterforms.", "Keep exact copy readable; do not distort required strings into illegible shapes."],
+          "ideal_item_range": [1, 10]
+        },
+        {
+          "id": "number-led-scoreboard",
+          "title": "Number-led Scoreboard",
+          "topology_family": "oversized-number-anchors-with-data-trails",
+          "reading_path": "dominant-number-anchors-to-associated-detail-trails",
+          "changed_axes": ["topology", "reading_path", "hierarchy", "grouping", "container_grammar", "palette_material", "text_image_relationship"],
+          "layout_tokens": ["number anchors", "scoreboard", "data trails"],
+          "prompt_hints": ["Use verified numbers as oversized anchors with their own data trails.", "Keep every number bound to its product and qualifier.", "Do not imply a score, winner, or ranking unless explicitly sourced."],
+          "preferred_content_types": ["multi_product_comparison", "dense_infographic"],
+          "ideal_item_range": [3, 14]
+        },
+        {
+          "id": "stamp-label-field",
+          "title": "Stamp and Label Field",
+          "topology_family": "layered-label-and-stamp-field",
+          "reading_path": "hero-label-to-overlapping-secondary-tags",
+          "changed_axes": ["topology", "reading_path", "hierarchy", "grouping", "container_grammar", "palette_material", "text_image_relationship"],
+          "layout_tokens": ["stamp field", "labels", "overlapping tags"],
+          "prompt_hints": ["Compose a controlled field of stamps, labels, and clipped tags around one hero label.", "Use overlap to create hierarchy without hiding exact copy.", "Avoid random sticker noise and invented certification marks."],
+          "ideal_item_range": [2, 12]
+        }
+      ]
+    },
+    {
+      "id": "tactile-organic",
+      "title": "Tactile and Organic",
+      "leaf": "tactile-organic.md",
+      "description": "Material fragments and organic territories replace rigid containers.",
+      "defaults": {
+        "description": "An organic material composition with irregular territories and tactile layering.",
+        "supports": ["multi_product_comparison", "single_product_poster", "editorial_photo", "evidence_comparison", "illustration_freeform", "mixed_unknown"],
+        "text_density": ["low", "medium", "high"],
+        "item_range": [1, 16],
+        "renderers": ["model-led", "generative", "hybrid", "locked-composite", "deterministic"],
+        "aspects": ["portrait", "landscape", "square"],
+        "supports_protected_regions": true,
+        "preferred_content_types": ["single_product_poster", "editorial_photo", "illustration_freeform"],
+        "visual_affinities": ["organic-wellness", "warm-editorial-paper", "soft-clay-3d", "retro-riso"]
+      },
+      "kernels": [
+        {
+          "id": "cut-paper-collage",
+          "title": "Cut-paper Collage",
+          "topology_family": "tactile-cut-paper-collage",
+          "reading_path": "largest-fragment-to-smaller-cutouts",
+          "changed_axes": ["topology", "reading_path", "hierarchy", "grouping", "container_grammar", "palette_material", "text_image_relationship"],
+          "layout_tokens": ["cut paper", "collage fragments", "torn edges"],
+          "prompt_hints": ["Rebuild content as a tactile cut-paper collage with controlled irregularity.", "Lead with one large fragment and guide attention through smaller cutouts.", "Keep labels bound to their own fragments and avoid scrapbook clutter."],
+          "ideal_item_range": [1, 10]
+        },
+        {
+          "id": "liquid-islands",
+          "title": "Liquid Islands",
+          "topology_family": "interlocking-liquid-territories",
+          "reading_path": "largest-fluid-island-through-narrow-channels",
+          "changed_axes": ["topology", "reading_path", "hierarchy", "grouping", "container_grammar", "palette_material", "text_image_relationship"],
+          "layout_tokens": ["liquid islands", "fluid territories", "channels"],
+          "prompt_hints": ["Use interlocking fluid territories as large content zones.", "Guide reading through narrow negative-space channels.", "Avoid generic blobs placed behind an unchanged grid."],
+          "ideal_item_range": [2, 12]
+        },
+        {
+          "id": "botanical-archipelago",
+          "title": "Botanical Archipelago",
+          "topology_family": "organic-archipelago-with-botanical-connectors",
+          "reading_path": "main-island-to-botanical-satellites",
+          "changed_axes": ["topology", "reading_path", "hierarchy", "grouping", "container_grammar", "palette_material", "text_image_relationship"],
+          "layout_tokens": ["botanical archipelago", "organic islands", "leaf connectors"],
+          "prompt_hints": ["Create a small archipelago of organic content islands connected by restrained botanical gestures.", "Use one island as the entry and vary satellite scale.", "Do not imply unsupported natural or health claims through decoration."],
+          "ideal_item_range": [2, 10]
+        },
+        {
+          "id": "textile-patchwork",
+          "title": "Textile Patchwork",
+          "topology_family": "stitched-variable-patches",
+          "reading_path": "dominant-patch-to-stitched-neighbors",
+          "changed_axes": ["topology", "reading_path", "hierarchy", "grouping", "container_grammar", "palette_material", "text_image_relationship"],
+          "layout_tokens": ["textile patchwork", "stitched patches", "fabric grid"],
+          "prompt_hints": ["Use variable fabric-like patches with one dominant patch and irregular seams.", "Let stitch lines guide reading between semantic nodes.", "Keep the result editorial and avoid a uniform quilt grid."],
+          "ideal_item_range": [3, 14]
+        }
+      ]
+    },
+    {
+      "id": "diagrammatic-data",
+      "title": "Diagrammatic and Data",
+      "leaf": "diagrammatic-data.md",
+      "description": "Maps, trees, blueprints, and spectra turn information relationships into the main layout.",
+      "defaults": {
+        "description": "A diagram-led composition where verified relationships determine the spatial system.",
+        "supports": ["multi_product_comparison", "single_product_poster", "dense_infographic", "evidence_comparison", "screenshot_ui", "illustration_freeform", "mixed_unknown"],
+        "text_density": ["low", "medium", "high"],
+        "item_range": [2, 40],
+        "renderers": ["model-led", "generative", "hybrid", "locked-composite", "deterministic"],
+        "aspects": ["portrait", "landscape", "square", "panoramic"],
+        "supports_protected_regions": true,
+        "preferred_content_types": ["dense_infographic", "multi_product_comparison", "screenshot_ui"],
+        "visual_affinities": ["tech-blueprint", "swiss-clinical", "translucent-glass", "monochrome-ink"]
+      },
+      "kernels": [
+        {
+          "id": "subway-map",
+          "title": "Subway Map",
+          "topology_family": "multi-line-transit-map",
+          "reading_path": "line-entry-through-shared-transfer-nodes",
+          "changed_axes": ["topology", "reading_path", "hierarchy", "grouping", "container_grammar", "palette_material", "text_image_relationship"],
+          "layout_tokens": ["subway map", "transit lines", "transfer nodes"],
+          "prompt_hints": ["Map categories onto a few transit lines with shared nodes only where relationships are verified.", "Use line identity and transfer points to guide reading.", "Do not invent sequence, causality, or connections."],
+          "ideal_item_range": [5, 24]
+        },
+        {
+          "id": "decision-tree",
+          "title": "Decision Tree",
+          "topology_family": "branching-decision-tree",
+          "reading_path": "root-question-through-verified-branches",
+          "changed_axes": ["topology", "reading_path", "hierarchy", "grouping", "container_grammar", "palette_material", "text_image_relationship"],
+          "layout_tokens": ["decision tree", "branching choices", "root question"],
+          "prompt_hints": ["Start with one explicit question and branch only on verified distinctions.", "Make endpoints large enough to hold indivisible semantic nodes.", "If no real decision logic exists, use this as a comparison tree without invented recommendations."],
+          "ideal_item_range": [3, 16]
+        },
+        {
+          "id": "annotated-blueprint",
+          "title": "Annotated Blueprint",
+          "topology_family": "central-blueprint-with-callout-network",
+          "reading_path": "central-object-to-numbered-callouts",
+          "changed_axes": ["topology", "reading_path", "hierarchy", "grouping", "container_grammar", "palette_material", "text_image_relationship"],
+          "layout_tokens": ["blueprint", "numbered callouts", "technical annotations"],
+          "prompt_hints": ["Use one central object or system with numbered callouts around it.", "Keep connector routing clean and exact copy horizontal.", "Avoid fabricated specifications, dimensions, or technical claims."],
+          "ideal_item_range": [2, 14]
+        },
+        {
+          "id": "spectrum-map",
+          "title": "Spectrum Map",
+          "topology_family": "continuous-spectrum-with-anchored-nodes",
+          "reading_path": "one-spectrum-end-to-the-other-with-local-detours",
+          "changed_axes": ["topology", "reading_path", "hierarchy", "grouping", "container_grammar", "palette_material", "text_image_relationship"],
+          "layout_tokens": ["spectrum map", "continuous axis", "anchored nodes"],
+          "prompt_hints": ["Place semantic nodes along a continuous visual spectrum only when the ordering is source-supported.", "Use anchored side notes for details and exceptions.", "If the source has no ordered variable, use a neutral thematic spectrum and state that it is non-ranking."],
+          "ideal_item_range": [4, 20]
+        }
+      ]
+    }
+  ],
+  "visual_systems": [
+    {
+      "id": "swiss-clinical", "title": "Swiss Clinical", "visual_family": "precision-modernist",
+      "supports": ["multi_product_comparison", "single_product_poster", "dense_infographic", "editorial_photo", "evidence_comparison", "screenshot_ui", "illustration_freeform", "mixed_unknown"],
+      "text_density": ["low", "medium", "high"], "renderers": ["model-led", "generative", "hybrid", "locked-composite", "deterministic"],
+      "preferred_content_types": ["multi_product_comparison", "dense_infographic", "evidence_comparison"],
+      "style_tokens": ["swiss grid", "clinical blue", "modernist rules"],
+      "prompt_hints": ["Use disciplined sans-serif hierarchy, crisp rules, cool neutrals, and one restrained accent.", "Keep spacing precise without reverting to equal cards."],
+      "negative_hints": ["generic hospital template", "sterile empty whitespace", "tiny unreadable captions"]
+    },
+    {
+      "id": "warm-editorial-paper", "title": "Warm Editorial Paper", "visual_family": "printed-editorial",
+      "supports": ["multi_product_comparison", "single_product_poster", "dense_infographic", "editorial_photo", "evidence_comparison", "illustration_freeform", "mixed_unknown"],
+      "text_density": ["low", "medium", "high"], "renderers": ["model-led", "generative", "hybrid", "locked-composite", "deterministic"],
+      "preferred_content_types": ["editorial_photo", "multi_product_comparison"],
+      "style_tokens": ["warm paper", "editorial ink", "print grain"],
+      "prompt_hints": ["Use warm uncoated paper, ink-like navy and vermilion accents, and restrained print grain.", "Let texture support hierarchy rather than blur copy."],
+      "negative_hints": ["nostalgic newspaper cliché", "heavy distress", "dirty low-contrast text"]
+    },
+    {
+      "id": "premium-dark-metal", "title": "Premium Dark Metal", "visual_family": "luxury-material",
+      "supports": ["multi_product_comparison", "single_product_poster", "dense_infographic", "editorial_photo", "illustration_freeform", "mixed_unknown"],
+      "text_density": ["low", "medium", "high"], "renderers": ["model-led", "generative", "hybrid", "locked-composite", "deterministic"],
+      "preferred_content_types": ["single_product_poster", "editorial_photo"],
+      "style_tokens": ["dark metal", "premium black", "metallic highlight"],
+      "prompt_hints": ["Use deep charcoal surfaces, controlled metallic highlights, and cinematic edge light.", "Reserve bright contrast for verified key facts."],
+      "negative_hints": ["cheap gold gradient", "gaming poster", "crushed black copy"]
+    },
+    {
+      "id": "playful-pop", "title": "Playful Pop", "visual_family": "bold-pop-graphic",
+      "supports": ["multi_product_comparison", "single_product_poster", "dense_infographic", "editorial_photo", "illustration_freeform", "mixed_unknown"],
+      "text_density": ["low", "medium", "high"], "renderers": ["model-led", "generative", "hybrid", "locked-composite", "deterministic"],
+      "preferred_content_types": ["illustration_freeform", "single_product_poster"],
+      "style_tokens": ["pop colors", "sticker shapes", "bold outlines"],
+      "prompt_hints": ["Use high-contrast color blocks, confident rounded shapes, and a limited playful palette.", "Keep decorative marks subordinate to semantic nodes."],
+      "negative_hints": ["children's worksheet", "random sticker explosion", "rainbow overload"]
+    },
+    {
+      "id": "retro-riso", "title": "Retro Riso", "visual_family": "riso-print",
+      "supports": ["multi_product_comparison", "single_product_poster", "dense_infographic", "editorial_photo", "illustration_freeform", "mixed_unknown"],
+      "text_density": ["low", "medium", "high"], "renderers": ["model-led", "generative", "hybrid", "locked-composite", "deterministic"],
+      "preferred_content_types": ["editorial_photo", "illustration_freeform"],
+      "style_tokens": ["risograph", "halftone", "misregistration"],
+      "prompt_hints": ["Use a two- or three-ink risograph palette, selective halftone, and slight registration character.", "Keep exact copy crisp enough to audit."],
+      "negative_hints": ["full-surface noise", "illegible distressed type", "generic vintage poster"]
+    },
+    {
+      "id": "translucent-glass", "title": "Translucent Glass", "visual_family": "luminous-translucency",
+      "supports": ["multi_product_comparison", "single_product_poster", "dense_infographic", "editorial_photo", "evidence_comparison", "screenshot_ui", "illustration_freeform", "mixed_unknown"],
+      "text_density": ["low", "medium", "high"], "renderers": ["model-led", "generative", "hybrid", "locked-composite", "deterministic"],
+      "preferred_content_types": ["screenshot_ui", "dense_infographic", "illustration_freeform"],
+      "style_tokens": ["glassmorphism", "translucent panels", "luminous gradients"],
+      "prompt_hints": ["Use restrained translucent layers, luminous color diffusion, and sharp foreground type.", "Ensure every text-bearing surface has sufficient contrast."],
+      "negative_hints": ["generic glass dashboard", "blurred copy", "too many floating panels"]
+    },
+    {
+      "id": "monochrome-ink", "title": "Monochrome Ink", "visual_family": "graphic-ink",
+      "supports": ["multi_product_comparison", "single_product_poster", "dense_infographic", "editorial_photo", "evidence_comparison", "illustration_freeform", "mixed_unknown"],
+      "text_density": ["low", "medium", "high"], "renderers": ["model-led", "generative", "hybrid", "locked-composite", "deterministic"],
+      "preferred_content_types": ["dense_infographic", "editorial_photo"],
+      "style_tokens": ["monochrome ink", "black and white", "brush marks"],
+      "prompt_hints": ["Use black, off-white, one optional signal color, and expressive but controlled ink marks.", "Create hierarchy through weight and negative space."],
+      "negative_hints": ["gray mush", "photocopy artifact overload", "illegible brush lettering"]
+    },
+    {
+      "id": "organic-wellness", "title": "Organic Wellness", "visual_family": "soft-natural",
+      "supports": ["multi_product_comparison", "single_product_poster", "dense_infographic", "editorial_photo", "evidence_comparison", "illustration_freeform", "mixed_unknown"],
+      "text_density": ["low", "medium", "high"], "renderers": ["model-led", "generative", "hybrid", "locked-composite", "deterministic"],
+      "preferred_content_types": ["single_product_poster", "editorial_photo"],
+      "style_tokens": ["organic wellness", "sage green", "natural texture"],
+      "prompt_hints": ["Use muted botanical tones, soft mineral textures, and gentle organic boundaries.", "Keep factual claims visually neutral and do not imply medical efficacy."],
+      "negative_hints": ["generic spa brochure", "unsupported health symbolism", "washed-out low contrast"]
+    },
+    {
+      "id": "tech-blueprint", "title": "Tech Blueprint", "visual_family": "technical-diagram",
+      "supports": ["multi_product_comparison", "single_product_poster", "dense_infographic", "evidence_comparison", "screenshot_ui", "illustration_freeform", "mixed_unknown"],
+      "text_density": ["low", "medium", "high"], "renderers": ["model-led", "generative", "hybrid", "locked-composite", "deterministic"],
+      "preferred_content_types": ["dense_infographic", "screenshot_ui"],
+      "style_tokens": ["blueprint", "technical grid", "cyan lines"],
+      "prompt_hints": ["Use blueprint blue, precise linework, numbered annotations, and restrained glow.", "Separate real source facts from decorative technical marks."],
+      "negative_hints": ["invented dimensions", "fake engineering labels", "cyberpunk clutter"]
+    },
+    {
+      "id": "museum-neutral", "title": "Museum Neutral", "visual_family": "quiet-exhibition",
+      "supports": ["multi_product_comparison", "single_product_poster", "dense_infographic", "editorial_photo", "evidence_comparison", "illustration_freeform", "mixed_unknown"],
+      "text_density": ["low", "medium", "high"], "renderers": ["model-led", "generative", "hybrid", "locked-composite", "deterministic"],
+      "preferred_content_types": ["editorial_photo", "evidence_comparison"],
+      "style_tokens": ["museum neutral", "gallery white", "caption labels"],
+      "prompt_hints": ["Use quiet stone and paper neutrals, exhibition-grade spacing, and precise caption labels.", "Let object scale and placement provide drama."],
+      "negative_hints": ["empty gallery mockup", "tiny wall labels", "sterile sameness"]
+    },
+    {
+      "id": "neo-brutalist", "title": "Neo Brutalist", "visual_family": "raw-structural",
+      "supports": ["multi_product_comparison", "single_product_poster", "dense_infographic", "editorial_photo", "screenshot_ui", "illustration_freeform", "mixed_unknown"],
+      "text_density": ["low", "medium", "high"], "renderers": ["model-led", "generative", "hybrid", "locked-composite", "deterministic"],
+      "preferred_content_types": ["single_product_poster", "screenshot_ui"],
+      "style_tokens": ["brutalist", "hard borders", "raw type"],
+      "prompt_hints": ["Use blunt scale contrast, hard edges, visible structural rules, and a small abrasive palette.", "Keep rawness intentional and hierarchy unmistakable."],
+      "negative_hints": ["broken website aesthetic", "random misalignment", "accessibility-hostile contrast"]
+    },
+    {
+      "id": "soft-clay-3d", "title": "Soft Clay 3D", "visual_family": "tactile-3d",
+      "supports": ["multi_product_comparison", "single_product_poster", "editorial_photo", "illustration_freeform", "mixed_unknown"],
+      "text_density": ["low", "medium"], "renderers": ["model-led", "generative", "hybrid", "locked-composite"],
+      "preferred_content_types": ["single_product_poster", "illustration_freeform"],
+      "style_tokens": ["soft clay", "3d forms", "rounded render"],
+      "prompt_hints": ["Use soft clay-like 3D forms, diffuse light, and tactile depth around semantically preserved objects.", "Keep typography flat, sharp, and separate from sculptural forms."],
+      "negative_hints": ["toy-store render", "overly cute mascots", "melted product silhouettes"]
+    }
+  ]
+}
