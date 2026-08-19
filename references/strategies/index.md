@@ -13,6 +13,6 @@ The active seed library contains 8 structural families and 32 topology kernels. 
 | `tactile-organic` | `cut-paper-collage`, `liquid-islands`, `botanical-archipelago`, `textile-patchwork` | [tactile-organic.md](tactile-organic.md) |
 | `diagrammatic-data` | `subway-map`, `decision-tree`, `annotated-blueprint`, `spectrum-map` | [diagrammatic-data.md](diagrammatic-data.md) |
 
-Structure and finish are independent. The router pairs a shortlisted kernel with one of 12 compatible visual systems in the catalog, creating a broad but controlled capability surface. The catalog metadata in [catalog.json](catalog.json) is authoritative for automatic compatibility checks; family leaves supply art direction and failure controls.
+Structure and finish are independent. The router pairs a shortlisted kernel with one of 12 compatible visual systems, then assigns compatible product/text embedding grammars and an asset gate. These choices produce one decision card; they do not authorize automatic selection. The catalog metadata in [catalog.json](catalog.json) is authoritative for automatic compatibility checks; family leaves supply art direction and failure controls. See [../embedding-grammar.md](../embedding-grammar.md) for integration behavior.
 
 There are no brand-specific, source-specific, or successful-example-specific active leaves. `serpentine-flow` is one ordinary kernel among 32, not the portrait-comparison default.

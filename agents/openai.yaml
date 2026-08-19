@@ -1,6 +1,6 @@
 interface:
   display_name: "Adaptive Image Recomposer"
   short_description: "识别内容关系，跨构图家族发散，再选择单一路线完成强重构"
-  default_prompt: "Use $adaptive-image-recomposer to analyze this image, bind verified content into semantic groups, explore structurally different reconstruction families, compare a diverse direction board, then compile one selected topology kernel and visual system with an auditable repair path."
+  default_prompt: "Use $adaptive-image-recomposer to analyze this image, bind verified content and asset readiness into semantic groups, propose several structurally different direction cards with seamless embedding grammars, pause for my explicit selection, then compile the selected joint-composition contract and auditable repair path."
 policy:
   allow_implicit_invocation: true

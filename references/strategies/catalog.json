@@ -1,8 +1,97 @@
 {
-  "catalog_version": "0.2",
+  "catalog_version": "0.3",
   "architecture": {
-    "selection_order": ["outcome_contract", "content_archetype", "direction_family", "structural_kernel", "visual_system", "renderer"],
-    "policy": "Explore many structure families, pair each shortlisted kernel with one visual system, then compile exactly one lane. Never concatenate the whole library into one prompt."
+    "selection_order": ["outcome_contract", "content_archetype", "asset_readiness", "direction_family", "structural_kernel", "visual_system", "embedding_grammar", "human_selection", "renderer"],
+    "policy": "Explore many structure families, pair each shortlisted kernel with one embedding grammar and one visual system, pause for explicit human selection, then compile exactly one lane. Never concatenate the whole library into one prompt."
+  },
+  "asset_preparation_modes": [
+    {
+      "id": "use-transparent-original",
+      "title": "Use Transparent Original",
+      "when": "A verified transparent source asset with clean alpha is available.",
+      "operations": ["scale", "translate", "contact_shadow", "scene_color_match"]
+    },
+    {
+      "id": "segment-protected-edge-band",
+      "title": "Segment Protected Edge Band",
+      "when": "A product or evidence object exists only inside a flattened raster.",
+      "operations": ["crop", "alpha_mask", "edge_refine", "color_decontaminate", "scale", "translate"],
+      "policy": "Keep protected core pixels unchanged; modify only the alpha/edge band needed to remove the old background."
+    },
+    {
+      "id": "semantic-resynthesis",
+      "title": "Semantic Resynthesis",
+      "when": "Creative reconstruction allows semantic identity instead of source-pixel identity.",
+      "operations": ["joint_model_render", "identity_audit"]
+    },
+    {
+      "id": "framed-source-fallback",
+      "title": "Framed Source Fallback",
+      "when": "No reliable cutout can be produced without damaging evidentiary pixels.",
+      "operations": ["crop", "scale", "translate", "frame"],
+      "policy": "Explicit degraded fallback only; never disguise a rectangular source crop as seamless embedding."
+    }
+  ],
+  "embedding_grammars": {
+    "product": [
+      {
+        "id": "semantic-joint-render",
+        "title": "Semantic Joint Render",
+        "description": "The model rebuilds the object and surrounding scene as one coordinated visual node; semantic identity is audited, not pixel identity."
+      },
+      {
+        "id": "transparent-flat",
+        "title": "Transparent Flat Embed",
+        "description": "A clean alpha product asset sits directly in the composition with no inherited rectangular background, using shared grain, edge color, and local grounding."
+      },
+      {
+        "id": "grounded-stage",
+        "title": "Grounded Stage Embed",
+        "description": "A clean product cutout is anchored to a shared shelf, shadow, halo, or light pool that belongs to the whole composition."
+      },
+      {
+        "id": "material-tuck",
+        "title": "Material Tuck Embed",
+        "description": "The object overlaps or tucks into a generated paper, ribbon, contour, or translucent material boundary while its protected core remains untouched."
+      },
+      {
+        "id": "framed-fallback",
+        "title": "Explicit Framed Fallback",
+        "description": "A visibly intentional frame contains a source crop only when seamless extraction is unsafe; it is never the primary recommendation."
+      }
+    ],
+    "text": [
+      {
+        "id": "joint-typography",
+        "title": "Joint Typography",
+        "description": "The model composes typography with the scene and exact strings are audited or locally repaired."
+      },
+      {
+        "id": "direct-on-quiet-field",
+        "title": "Direct on Quiet Field",
+        "description": "Exact type is placed directly on a low-frequency region planned with the node, without a generic rectangular card."
+      },
+      {
+        "id": "material-surface",
+        "title": "Material Surface",
+        "description": "Exact type follows a shared paper, glass, ribbon, shelf, or light surface already participating in the composition."
+      },
+      {
+        "id": "editorial-annotation",
+        "title": "Editorial Annotation",
+        "description": "Copy is integrated as captions, pull facts, marginalia, or callouts bound to the object rather than boxed as an isolated tile."
+      },
+      {
+        "id": "contour-rail",
+        "title": "Contour Rail",
+        "description": "Copy follows a path, contour, radial rail, or connector that also carries the reading order."
+      },
+      {
+        "id": "card-fallback",
+        "title": "Explicit Card Fallback",
+        "description": "A bounded card is used only when text density or contrast makes integrated placement unsafe, with documented reason."
+      }
+    ]
   },
   "families": [
     {

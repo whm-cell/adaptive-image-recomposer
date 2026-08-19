@@ -14,4 +14,4 @@ Use this family for dense comparisons that need repeatable information container
 - Vary module proportion, density, and cadence by role; do not output nine equal cards.
 - Never move values between item groups.
 - If size is purely editorial, avoid winner badges and ranking language.
-- In pixel-fidelity modes, protected inserts remain independent layers.
+- In pixel-fidelity modes, protected cores remain independently auditable while their final node geometry, copy anchor, grounding, and neighboring material are composed jointly.

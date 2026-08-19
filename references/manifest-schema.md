@@ -79,11 +79,28 @@ Each `content.objects` entry uses:
   "bbox": [0.31, 0.15, 0.44, 0.32],
   "preserve": "lock_pixels",
   "evidence": "visual",
-  "verified": true
+  "verified": true,
+  "asset": {
+    "source_path": "/absolute/path/product-01.png",
+    "source_kind": "transparent_original",
+    "alpha_status": "valid",
+    "edge_status": "clean",
+    "background_complexity": "none"
+  }
 }
 ```
 
 Bounding boxes are normalized `[x1, y1, x2, y2]` in the range 0–1. Allowed `preserve` values are `none`, `semantic`, `shape`, and `lock_pixels`.
+
+The optional `asset` block makes seamless integration auditable:
+
+- `source_kind`: `transparent_original`, `clean_flat`, `flattened_crop`, or `unavailable`;
+- `alpha_status`: `valid`, `opaque_background`, `needs_segmentation`, or `unknown`;
+- `edge_status`: `clean`, `needs_refinement`, or `unknown`;
+- `background_complexity`: `none`, `simple`, `complex`, or `unknown`;
+- `source_path`: an absolute path when an independent asset exists.
+
+If `asset` is absent but `bbox` exists, the planner conservatively treats the object as a flattened crop that needs segmentation. Do not mark a crop as a transparent original merely because its visible background is white.
 
 ## Text blocks
 
@@ -131,11 +148,18 @@ Every `member_refs` value must resolve to an object or text-block ID. Keep a nam
   "id": "product-01-label",
   "bbox": [0.34, 0.19, 0.43, 0.29],
   "reason": "product label must not be regenerated",
-  "allowed_transforms": ["crop", "scale", "translate", "frame"]
+  "allowed_transforms": [
+    "crop",
+    "scale",
+    "translate",
+    "alpha_mask",
+    "edge_refine",
+    "color_decontaminate"
+  ]
 }
 ```
 
-If a protected region cannot be isolated from a flattened asset, record that limitation in `uncertainties`. Do not claim pixel fidelity that the available source cannot support.
+Allowed transforms are `crop`, `scale`, `translate`, `frame`, `alpha_mask`, `edge_refine`, and `color_decontaminate`. For a protected object, masking, edge refinement, and color decontamination may affect only the silhouette edge band; the protected core remains unchanged. If a protected region cannot be isolated from a flattened asset, record that limitation in `uncertainties` and use an explicit visible frame or request a clean asset. Do not claim pixel fidelity that the available source cannot support.
 
 ## Uncertainties and blocking rules
 

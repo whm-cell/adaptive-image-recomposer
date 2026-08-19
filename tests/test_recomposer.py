@@ -15,9 +15,12 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from recomposer_core import (  # noqa: E402
     RecomposerError,
+    build_asset_preparation_plan,
     build_qa_report,
     build_route_decision,
+    build_selection_record,
     compare_required_text,
+    compile_direction_board,
     create_manifest_draft,
     load_catalog,
     load_json,
@@ -34,6 +37,13 @@ class RecomposerTests(unittest.TestCase):
     def setUp(self) -> None:
         self.manifest = load_json(FIXTURE)
         self.catalog = load_catalog(CATALOG)
+
+    def _selection(self, route, index=0):
+        return build_selection_record(
+            route,
+            route["candidates"][index]["id"],
+            rationale="Human selected this lane after comparing the direction board.",
+        )
 
     def _creative_portrait_manifest(self):
         manifest = copy.deepcopy(self.manifest)
@@ -81,6 +91,9 @@ class RecomposerTests(unittest.TestCase):
         self.assertEqual(len(self.catalog["families"]), 8)
         self.assertEqual(len(strategy_ids), 32)
         self.assertEqual(len(self.catalog["visual_systems"]), 12)
+        self.assertEqual(len(self.catalog["asset_preparation_modes"]), 4)
+        self.assertEqual(len(self.catalog["embedding_grammars"]["product"]), 5)
+        self.assertEqual(len(self.catalog["embedding_grammars"]["text"]), 6)
         self.assertNotIn("portrait-serpentine-comparison", strategy_ids)
         self.assertNotIn("editorial-s-curve", strategy_ids)
         self.assertEqual(
@@ -97,6 +110,15 @@ class RecomposerTests(unittest.TestCase):
         self.assertGreaterEqual(route["diversity_summary"]["direction_family_count"], 6)
         self.assertEqual(route["diversity_summary"]["topology_count"], 6)
         self.assertGreaterEqual(route["diversity_summary"]["visual_family_count"], 5)
+        self.assertEqual(route["workflow_state"], "AWAITING_HUMAN_SELECTION")
+        self.assertNotIn("selected_strategy_id", route)
+        self.assertIn("best_overall", route["recommendations"])
+        self.assertIn("boldest_change", route["recommendations"])
+        self.assertIn("safest_production", route["recommendations"])
+        for candidate in route["candidates"]:
+            self.assertIn("embedding_plan", candidate)
+            self.assertIn("wireframe", candidate)
+            self.assertIn("decision_scores", candidate)
         self.assertNotIn(
             "portrait-serpentine-comparison",
             [candidate["id"] for candidate in route["candidates"]],
@@ -112,41 +134,59 @@ class RecomposerTests(unittest.TestCase):
 
     def test_compile_produces_hybrid_contract(self) -> None:
         route = build_route_decision(self.manifest, self.catalog)
+        selection = self._selection(route)
         with tempfile.TemporaryDirectory() as temp_dir:
             outputs = write_compiled_artifacts(
-                self.manifest, route, self.catalog, Path(temp_dir)
+                self.manifest, route, selection, self.catalog, Path(temp_dir)
             )
             prompt = outputs["prompt"].read_text(encoding="utf-8")
             board = outputs["direction_board"].read_text(encoding="utf-8")
-            overlay = json.loads(outputs["overlay"].read_text(encoding="utf-8"))
-            layout = json.loads(outputs["layout"].read_text(encoding="utf-8"))
-            self.assertIn("render no readable text", prompt)
+            production = json.loads(outputs["production_layers"].read_text(encoding="utf-8"))
+            layout = json.loads(outputs["plan"].read_text(encoding="utf-8"))
+            asset_plan = json.loads(outputs["asset_plan"].read_text(encoding="utf-8"))
+            self.assertIn("layout-conditioned hybrid joint composition", prompt)
+            self.assertIn("not an empty-background-first workflow", prompt)
+            self.assertNotIn("hybrid backdrop generation", prompt)
+            self.assertNotIn("reserve clean zones", prompt)
+            self.assertNotIn("overlay-spec.json", prompt)
             self.assertIn("Concept isolation:", prompt)
             self.assertIn("Visual system:", prompt)
+            self.assertIn("Embedding grammar:", prompt)
             self.assertEqual(board.count("## Lane "), 6)
             for candidate in route["candidates"]:
                 self.assertIn(candidate["id"], board)
             for candidate in route["candidates"][1:]:
                 self.assertNotIn(candidate["id"], prompt)
-            self.assertEqual(len(overlay["text_blocks"]), 31)
+            self.assertEqual(len(production["text_blocks"]), 31)
+            self.assertEqual(len(production["prepared_assets"]), 9)
+            self.assertEqual(asset_plan["summary"]["requires_preparation_count"], 9)
+            self.assertEqual(asset_plan["summary"]["seamless_embedding_gate"], "prepare_then_compose")
             self.assertIn("direction_family", layout["strategy"])
             self.assertIn("id", layout["visual_system"])
+            self.assertEqual(layout["composition_mode"], "layout-conditioned-hybrid")
+            self.assertNotIn("background_only_overlay_fallback", layout)
+            self.assertFalse(layout["degraded_asset_fallback"]["active"])
             self.assertIn("topology", layout["transformation_contract"]["changed_axes"])
             self.assertIn("reading_path", layout["transformation_contract"]["changed_axes"])
+            self.assertNotIn("layout", outputs)
+            self.assertNotIn("overlay", outputs)
+            self.assertFalse((Path(temp_dir) / "layout-spec.json").exists())
+            self.assertFalse((Path(temp_dir) / "overlay-spec.json").exists())
 
     def test_compile_can_select_any_validated_lane_without_blending(self) -> None:
         route = build_route_decision(self.manifest, self.catalog)
         selected_id = route["candidates"][-1]["id"]
+        selection = build_selection_record(route, selected_id)
         with tempfile.TemporaryDirectory() as temp_dir:
             outputs = write_compiled_artifacts(
                 self.manifest,
                 route,
+                selection,
                 self.catalog,
                 Path(temp_dir),
-                strategy_id=selected_id,
             )
             prompt = outputs["prompt"].read_text(encoding="utf-8")
-            layout = json.loads(outputs["layout"].read_text(encoding="utf-8"))
+            layout = json.loads(outputs["plan"].read_text(encoding="utf-8"))
             self.assertEqual(layout["strategy"]["id"], selected_id)
             self.assertIn("Concept isolation:", prompt)
             for candidate in route["candidates"]:
@@ -174,14 +214,15 @@ class RecomposerTests(unittest.TestCase):
     def test_model_led_compile_is_whole_canvas_and_group_bound(self) -> None:
         manifest = self._creative_portrait_manifest()
         route = build_route_decision(manifest, self.catalog)
+        selection = self._selection(route)
         with tempfile.TemporaryDirectory() as temp_dir:
             outputs = write_compiled_artifacts(
-                manifest, route, self.catalog, Path(temp_dir)
+                manifest, route, selection, self.catalog, Path(temp_dir)
             )
             prompt = outputs["prompt"].read_text(encoding="utf-8")
             plan = json.loads(outputs["plan"].read_text(encoding="utf-8"))
             graph = json.loads(outputs["content_graph"].read_text(encoding="utf-8"))
-            overlay = json.loads(outputs["overlay"].read_text(encoding="utf-8"))
+            production = json.loads(outputs["production_layers"].read_text(encoding="utf-8"))
             retry = outputs["retry"].read_text(encoding="utf-8")
             board = outputs["direction_board"].read_text(encoding="utf-8")
             self.assertIn("model-led whole-canvas joint reconstruction", prompt)
@@ -190,10 +231,10 @@ class RecomposerTests(unittest.TestCase):
             self.assertIn("Node 1 [comparison-node-1]", prompt)
             self.assertNotIn("# Deterministic handoff", prompt)
             self.assertEqual(
-                plan["coordinate_status"], "model_resolved_at_render_time"
+                plan["coordinate_status"], "model_resolved_then_audited"
             )
             self.assertEqual(len(graph["groups"]), 9)
-            self.assertEqual(len(overlay["group_bindings"]), 9)
+            self.assertEqual(len(production["group_bindings"]), 9)
             self.assertEqual(board.count("## Lane "), 6)
             self.assertIn("Stop after two targeted model repairs", retry)
 
@@ -301,11 +342,12 @@ class RecomposerTests(unittest.TestCase):
 
     def test_qa_requires_manual_protected_pixel_review(self) -> None:
         route = build_route_decision(self.manifest, self.catalog)
+        selection = self._selection(route)
         with tempfile.TemporaryDirectory() as temp_dir:
             outputs = write_compiled_artifacts(
-                self.manifest, route, self.catalog, Path(temp_dir)
+                self.manifest, route, selection, self.catalog, Path(temp_dir)
             )
-            layout = load_json(outputs["layout"])
+            layout = load_json(outputs["plan"])
             observed = "\n".join(
                 block["text"] for block in self.manifest["content"]["text_blocks"]
             )
@@ -318,6 +360,88 @@ class RecomposerTests(unittest.TestCase):
             )
             self.assertEqual(report["status"], "conditional_pass")
             self.assertFalse(report["protected_pixels_verified"])
+            self.assertIsNone(report["integration_check"]["pass"])
+            self.assertTrue(
+                any("rectangular backgrounds" in item for item in report["manual_checks"])
+            )
+
+    def test_compile_requires_matching_human_selection_record(self) -> None:
+        route = build_route_decision(self.manifest, self.catalog)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with self.assertRaisesRegex(RecomposerError, "human selection record"):
+                write_compiled_artifacts(
+                    self.manifest,
+                    route,
+                    None,
+                    self.catalog,
+                    Path(temp_dir),
+                )
+        selection = self._selection(route)
+        automated_selection = copy.deepcopy(selection)
+        automated_selection["selected_by"] = "auto_opt_in"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with self.assertRaisesRegex(RecomposerError, "selected_by"):
+                write_compiled_artifacts(
+                    self.manifest,
+                    route,
+                    automated_selection,
+                    self.catalog,
+                    Path(temp_dir),
+                )
+        stale_route = copy.deepcopy(route)
+        stale_route["candidates"][0]["embedding_plan"]["text_mode"] = "material-surface"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with self.assertRaisesRegex(RecomposerError, "fingerprint"):
+                write_compiled_artifacts(
+                    self.manifest,
+                    stale_route,
+                    selection,
+                    self.catalog,
+                    Path(temp_dir),
+                )
+
+    def test_direction_board_is_a_real_human_decision_surface(self) -> None:
+        route = build_route_decision(self.manifest, self.catalog)
+        board = compile_direction_board(route)
+        self.assertIn("Human checkpoint:", board)
+        self.assertIn("Best overall:", board)
+        self.assertIn("Boldest change:", board)
+        self.assertIn("Safest production:", board)
+        self.assertEqual(board.count("- Wireframe:"), 6)
+        self.assertEqual(board.count("- Product embedding:"), 6)
+        self.assertEqual(board.count("- Decision scores:"), 6)
+
+    def test_asset_preparation_plan_forbids_fake_transparency(self) -> None:
+        plan = build_asset_preparation_plan(self.manifest, "hybrid")
+        self.assertEqual(plan["summary"]["object_count"], 9)
+        self.assertEqual(plan["summary"]["requires_preparation_count"], 9)
+        for item in plan["items"]:
+            self.assertEqual(item["preparation_mode_id"], "segment-protected-edge-band")
+            self.assertEqual(item["rectangular_background_policy"], "forbidden")
+            self.assertIn("alpha_mask", item["operations"])
+
+    def test_completed_reviews_can_pass_integrated_qa(self) -> None:
+        route = build_route_decision(self.manifest, self.catalog)
+        selection = self._selection(route)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            outputs = write_compiled_artifacts(
+                self.manifest, route, selection, self.catalog, Path(temp_dir)
+            )
+            observed = "\n".join(
+                block["text"] for block in self.manifest["content"]["text_blocks"]
+            )
+            report = build_qa_report(
+                self.manifest,
+                route,
+                load_json(outputs["plan"]),
+                observed_text=observed,
+                observed_text_source="provided_text_file",
+                protected_pixels_verified=True,
+                visual_review_passed=True,
+                integration_review_passed=True,
+            )
+            self.assertEqual(report["status"], "pass")
+            self.assertTrue(report["integration_check"]["pass"])
 
 
 if __name__ == "__main__":

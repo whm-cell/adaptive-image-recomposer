@@ -22,6 +22,19 @@ A production pipeline should use image-region comparison or source-layer composi
 
 Skip the protected-pixel claim for `model-led`; instead record that objects were semantically resynthesized. If pixel equality is required, the renderer selection is wrong.
 
+## Seamless embedding
+
+Review prepared assets and their relationship to copy as one integration system:
+
+- No inherited opaque crop rectangle, accidental alpha halo, or source-background color spill remains.
+- Product edge color, sharpness, grain, and local texture belong to the new scene.
+- Scale, occlusion, contact shadow, grounding, and light direction are credible and consistent.
+- Each product and its bound copy share an anchor, surface, connector, contour, or flow gesture; they do not read as an image pasted beside an unrelated text box.
+- Generic repeated cards, frames, and detached captions appear only when the selected direction explicitly requires them.
+- A protected core was not repainted during edge cleanup.
+
+This review is independent from OCR and layout-delta checks. Pass `--integration-review-passed` only after inspecting the rendered image at both full-canvas and edge-detail scale.
+
 ## Layout integrity
 
 - No overflow, clipping, accidental overlap, or unreadably small copy.
@@ -41,10 +54,10 @@ Skip the protected-pixel claim for `model-led`; instead record that objects were
 ## Result states
 
 - `pass`: all machine-checkable requirements pass and visual review is complete.
-- `conditional_pass`: machine checks pass but named manual checks remain.
+- `conditional_pass`: machine checks pass but named visual, association, protected-pixel, or integration checks remain.
 - `fail`: a required invariant, fidelity rule, or radicality rule failed.
 - `blocked`: required source information or a clean protected asset is unavailable.
 
-Retry one defect at a time. If the defect is text fidelity in a generative result, switch to hybrid or deterministic rendering instead of repeatedly asking the generator to typeset dense copy.
+Retry one defect at a time. Repair the affected semantic node—object, copy anchor, edges, grounding, and local material together. Do not repair integration by reverting to a generic background plus overlay. If the defect is text fidelity in a generative result, switch to hybrid or deterministic rendering instead of repeatedly asking the generator to typeset dense copy.
 
 For model-led work, permit two targeted repair edits to the latest result. Then escalate the renderer if the same string, association, or object-identity defect persists.

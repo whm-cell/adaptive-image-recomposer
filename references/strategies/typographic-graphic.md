@@ -14,4 +14,4 @@ Use this family when type, verified numbers, and graphic fields should become th
 - Do not distort exact copy into illegible word art.
 - Numeric emphasis does not authorize ranking, scoring, or a winner.
 - Never invent badges, seals, certification marks, or endorsement stamps.
-- If the renderer cannot reproduce required copy reliably, escalate it to deterministic overlays.
+- If the renderer cannot reproduce required copy reliably, escalate to deterministic whole-canvas typography while preserving the same semantic-node anchors, overlaps, and reading path.

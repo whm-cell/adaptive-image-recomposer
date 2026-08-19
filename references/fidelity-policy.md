@@ -7,7 +7,7 @@ Choose the outcome contract before the renderer. Fidelity risk and creative ambi
 | Contract | What may change | What must be proved | Default renderer |
 |---|---|---|---|
 | `creative_reconstruction` | whole composition, typography, decorative system, object rendering, spacing | required visible copy, object count, associations, visual delta | `model-led` |
-| `audited_content` | layout and replaceable visual language; critical assets remain independent | exact copy, associations, object identity, protected-source treatment | `hybrid` or `deterministic` |
+| `audited_content` | whole-canvas layout and replaceable visual language; critical assets remain independently auditable inside final semantic nodes | exact copy, associations, object identity, protected-source treatment, integration | `hybrid` or `deterministic` |
 | `pixel_fidelity` | surroundings plus approved transforms of protected pixels | region equality or source-layer compositing evidence | `locked-composite` |
 
 `creative_reconstruction` preserves semantic identity, not pixels. It is appropriate for a polished image-model result only when the user accepts that product artwork and micro-label details may be resynthesized.
@@ -26,16 +26,17 @@ Use the highest tier present, but do not let the tier silently choose the outcom
 ## Hard gates
 
 1. F3 content never uses `model-led`.
-2. `model-led` is incompatible with `lock_pixels` objects or protected regions. Change the contract or use an independent insert layer.
+2. `model-led` is incompatible with `lock_pixels` objects or protected regions. Change the contract or use an independently auditable source layer inside the jointly planned composition.
 3. For a multi-item model-led job, provide `content.groups` so values cannot migrate between items.
 4. Blocking uncertainties stop rendering.
 5. Unreadable source microcopy must remain absent or visually non-readable; it must not be invented.
+6. A flattened protected crop is not ready for seamless insertion until its silhouette and edge band can be isolated without changing protected core pixels. Otherwise use an explicit frame or stop for a cleaner asset.
 
 ## Escalation
 
 - Start with `model-led` for a creative whole-canvas reconstruction.
-- If exact text or item associations fail, make one targeted edit to the latest result.
+- If exact text, item associations, or local integration fail, repair the affected semantic node in the latest result.
 - After two targeted failures of the same kind, switch to hybrid or deterministic composition.
 - If the missing requirement is a clean protected source asset, stop and request it.
 
-Do not describe a visually similar product or face as pixel-preserved.
+Renderer escalation changes production authority, not the selected layout concept. Hybrid and deterministic routes still build one joint composition; they do not fall back to an empty background with detached coordinate overlays. Do not describe a visually similar product or face as pixel-preserved.

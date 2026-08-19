@@ -7,11 +7,13 @@ Routing must produce a genuinely divergent direction set before it produces a re
 Choose in this order:
 
 1. outcome contract and fidelity boundary;
-2. content archetype and density;
+2. content archetype, density, and asset readiness;
 3. structural direction family;
 4. topology kernel and reading path;
 5. independent visual system;
-6. renderer.
+6. product and text embedding grammars;
+7. human selection;
+8. renderer and production contract.
 
 This order prevents three common errors: treating style as layout, allowing one sample to become the default answer, and mixing many incompatible ideas into one giant prompt. See [direction-tree.md](direction-tree.md) for the full tree and extension rules.
 
@@ -19,9 +21,10 @@ This order prevents three common errors: treating style as layout, allowing one 
 
 1. Stop when source completeness fails.
 2. Reject `model-led` for protected regions, pixel-locked objects, or F3 evidence.
-3. Reject kernels that cannot support the renderer, text density, item count, or target aspect.
-4. For `radical`, require both topology and reading-path change plus at least five changed axes.
-5. Reject any kernel whose defining topology directly repeats a forbidden source feature.
+3. Classify every critical object's alpha, edge, source-background, and isolation readiness. Require semantic resynthesis, a clean cutout, an approved edge-band treatment, or a declared blocker.
+4. Reject kernels that cannot support the renderer, text density, item count, target aspect, or available asset treatment.
+5. For `radical`, require both topology and reading-path change plus at least five changed axes.
+6. Reject any kernel whose defining topology directly repeats a forbidden source feature.
 
 ## Stage B: compatibility score
 
@@ -37,26 +40,32 @@ The shortlist must satisfy these checks whenever enough compatible kernels exist
 - topology and reading path are not cosmetic variants of one another;
 - visual systems are varied independently from structure;
 - no source-specific sample route receives a bonus;
-- the first lane is provisional, not an automatic final choice.
+- no lane is automatically selected by rank or score.
 
 Use `focused` only when the user has explicitly selected a direction family or when production constraints leave very few compatible kernels.
 
-## Stage D: visual-system pairing
+## Stage D: visual and embedding pairing
 
 After structural diversification, pair each lane with one compatible visual system. Visual systems control palette, material, typography tone, texture, and finish. They do not change the structural identity of a lane. A new color palette on the same grid is still the same layout.
 
-## Stage E: selection and compilation
+Then assign one product-embedding grammar and one text-embedding grammar. Their shared anchor, edge/light/texture behavior, and content capacity must appear in the direction card wireframe. A generic card is allowed only when the selected structural grammar explicitly calls for a container; it is never the universal solution.
 
-Read `direction-board.md`, compare the candidates, and choose one lane using:
+## Stage E: decision board and human selection
+
+`direction-board.md` presents each candidate as a decision card. Compare:
 
 - magnitude of structural change from the source;
 - legibility of the proposed reading path;
 - ability to keep semantic groups intact;
 - fit for the output context;
-- fidelity and production risk;
+- asset readiness, text capacity, fidelity, integration, and production risk;
 - visual-system fit.
 
-Compile exactly one selected kernel with its paired visual system. Do not concatenate the shortlist into one prompt. If two lanes are worth exploring, compile and render them as two separate concepts.
+The board may label `best_overall`, `boldest_change`, and `safest_production`. These labels expose tradeoffs; they do not authorize automatic selection. Routing must stop in `AWAITING_HUMAN_SELECTION`. A human chooses a candidate, and the `select` command records the candidate, its visual system, rationale, and route fingerprint.
+
+## Stage F: route-bound compilation
+
+Compilation requires a valid human selection record. Reject missing, stale, mismatched, or non-human selections. Compile exactly one selected kernel with its paired visual and embedding grammars. Do not concatenate the shortlist into one prompt. If two lanes are worth exploring, create two explicit selection records in separate jobs and render them as separate concepts.
 
 ## Radicality contract
 

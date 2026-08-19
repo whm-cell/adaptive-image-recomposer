@@ -4,21 +4,21 @@ The compiler turns verified content, content-group bindings, one selected struct
 
 ## Shared order
 
-1. use case and asset;
-2. input image roles;
-3. outcome contract;
-4. primary reconstruction request;
-5. selected direction family, topology kernel, and reading path;
+1. route-bound human selection and output use;
+2. input image roles and asset readiness;
+3. outcome contract and renderer authority;
+4. primary joint-reconstruction request;
+5. selected direction family, topology kernel, reading path, and wireframe;
 6. paired visual system;
-7. content-group bindings;
-8. exact visible copy;
-9. semantic versus pixel preservation;
+7. product and text embedding grammars;
+8. content-group bindings as semantic composition nodes;
+9. exact visible copy and protected-source policy;
 10. source features to suppress;
-11. no-invention constraints and output intent.
+11. no-invention, anti-paste, and output constraints.
 
 ## Prompt isolation
 
-Compile exactly one lane from `direction-board.md`. Never blend the shortlisted kernels, list the whole strategy library, or treat a visual system as a replacement for structural change.
+Compile exactly one human-selected lane from `direction-board.md`. Validate the selection record against the route fingerprint before compiling. Never blend the shortlisted kernels, list the whole strategy library, or treat a visual system as a replacement for structural change.
 
 A high-signal lane description has this form:
 
@@ -30,19 +30,27 @@ The kernel-specific hints supply the actual topology, not this generic sentence.
 
 Ask for a whole-canvas joint reconstruction. The model coordinates composition, title scale, typography, objects, decorative language, color, texture, and spacing in the same render. It is not a blank-backdrop request or a collection of approximate coordinates.
 
-List group bindings so names and values do not migrate between items. Quote required strings verbatim. State that the result is audited and that source-object pixels may be resynthesized.
+List group bindings so names and values do not migrate between items. For every group, describe the object and copy as one semantic node with a shared anchor and local negative space. Quote required strings verbatim. State that the result is audited and that source-object pixels may be resynthesized.
 
 ## Hybrid
 
-The first model pass may be a complete visual candidate used as a composition reference. Production copy and locked inserts remain independent layers. If generating only a replaceable visual field, request no readable text.
+Solve the final semantic-node geometry before generating or assembling pixels. The model may render a complete candidate or create replaceable material, local transitions, and decorative fields around the final nodes. Exact copy and prepared assets remain independently auditable, but they occupy the same planned anchors, overlaps, grounding, light, and texture system. Do not generate a generic backdrop and later cover it with unrelated cards.
 
 ## Locked composite
 
-Generate only replaceable surroundings. Protected inputs are insert assets, not style references. Keep their internal pixels and proportions unchanged.
+Treat protected inputs as final semantic nodes, not style references. Keep protected cores and proportions unchanged, permit only approved silhouette edge-band cleanup, and design replaceable surroundings around their final boundaries. Contact shadow, local light, texture, overlap, and copy anchors must connect them to the shared scene.
 
 ## Deterministic
 
-The prompt becomes a layout brief for HTML, SVG, canvas, or an existing rendering engine. Decorative generation, if any, is isolated and contains no text.
+The prompt becomes a whole-canvas composition brief for HTML, SVG, canvas, or an existing rendering engine. It uses the same content graph, wireframe, and embedding grammar as model-led output. Decorative generation, if any, is one material source inside that planned composition and contains no required text. Deterministic does not mean “generate an empty background, reserve coordinates, then overlay everything.”
+
+## Production layer contract
+
+`production-layer-spec.json` binds exact strings and prepared/protected objects to their final semantic nodes. It is not a late overlay map. A compliant renderer must use the node's shared anchor, hierarchy, overlap, edge treatment, grounding, and material rules while constructing the whole image.
+
+## Degraded asset fallback
+
+Background-first overlay is not an available workflow. When one protected asset cannot be isolated or resynthesized safely, that asset may use an intentional visible frame while the rest of the canvas remains jointly composed. Record the exception in the asset plan and QA report; never disguise a rectangular crop as seamless integration.
 
 ## Retry prompt
 
@@ -51,6 +59,7 @@ Edit the latest result and name one defect. Repeat:
 - the successful direction family and kernel to freeze;
 - the paired visual system to freeze;
 - the affected content group and exact strings;
+- the selected product/text embedding grammar and failed local integration property;
 - all invariants;
 - no-extra-text and no-new-object constraints.
 
@@ -63,4 +72,6 @@ After two failures of the same exact-copy or association defect, escalate the re
 - Do not invent brands, claims, props, slogans, data, or label microcopy.
 - State the source topology and motifs that must not return.
 - Do not load unselected catalog branches into the prompt.
+- Do not introduce inherited rectangular backgrounds, detached captions, or generic repeated cards unless the selected structural grammar explicitly requires them.
+- Match edge color, local light, contact shadow, texture, scale, and overlap logic for every prepared insert.
 - A model-led result never carries a pixel-fidelity claim.

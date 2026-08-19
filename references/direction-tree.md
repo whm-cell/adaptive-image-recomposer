@@ -6,14 +6,18 @@ The direction tree is an extensible idea system, not a lookup table with one ans
 
 ```text
 source and fidelity contract
-└── content archetype
+├── content graph
+└── asset-readiness plan
     └── structural direction family
         └── topology kernel + reading path
             └── compatible visual system
-                └── renderer and QA contract
+                └── product + text embedding grammar
+                    └── direction card
+                        └── HARD HUMAN SELECTION
+                            └── renderer + joint-composition + QA contract
 ```
 
-The current seed library contains 8 structural families, 32 topology kernels, and 12 visual systems. This yields 384 possible structural/visual pairings before aspect, renderer, density, and fidelity gates. The number is a capability surface, not a promise that every pairing fits every image.
+The current seed library contains 8 structural families, 32 topology kernels, 12 visual systems, 4 asset-preparation modes, 5 product-embedding modes, and 6 text-embedding modes. There are 384 structural/visual pairings before the 30 possible embedding pairs and the aspect, renderer, density, fidelity, and asset gates. These numbers describe an extensible capability surface, not a promise that every combination fits every image.
 
 ## Structural families
 
@@ -34,6 +38,10 @@ Visual systems are selected after structure. They may change palette, typography
 
 Current systems include clinical Swiss, warm editorial paper, premium dark metal, playful pop, retro risograph, translucent glass, monochrome ink, organic wellness, technical blueprint, museum neutral, neo-brutalist, and soft clay 3D.
 
+## Embedding grammars
+
+Embedding is a first-class composition decision, not a post-production patch. The router assigns one product grammar and one text grammar to every candidate, then describes their shared anchor in the candidate wireframe. Asset preparation is chosen per object before placement. See [embedding-grammar.md](embedding-grammar.md).
+
 ## Exploration policy
 
 For the default `diverge_then_select` mode:
@@ -41,9 +49,11 @@ For the default `diverge_then_select` mode:
 1. score all compatible structural kernels;
 2. diversify across family, topology, and reading path;
 3. pair each shortlisted kernel with a varied compatible visual system;
-4. present six lanes in a direction board;
-5. select one lane;
-6. compile only that lane into a render contract.
+4. attach compatible product/text embedding grammars and asset gates;
+5. present six decision-ready cards with wireframes, changed axes, capacity, risk, and recommendation labels;
+6. stop in `AWAITING_HUMAN_SELECTION`;
+7. accept a human-authored selection record bound to the route fingerprint;
+8. compile only that lane into a joint-composition contract.
 
 The router may return fewer than six only when hard compatibility gates leave fewer valid kernels.
 
@@ -56,6 +66,8 @@ Delete or merge a branch when any of these is true:
 - its difference is only color, texture, typeface, or decoration;
 - its name embeds a client, brand, source image, item count, or aspect-specific one-off;
 - its prompt hints conflict with fidelity or content-association rules;
+- it implements a generic background plus detached cards or coordinate-reserved overlays;
+- it adds an integration mode whose edge, light, texture, grounding, or semantic-node behavior duplicates an existing grammar;
 - it cannot produce a testable structural distinction.
 
 Do not retain obsolete IDs as aliases when they would preserve a bad routing bias. Historical experiments belong in version control, not the active catalog.
@@ -70,7 +82,8 @@ When adding a direction:
 4. define content, density, item-count, aspect, renderer, and protected-region compatibility;
 5. write positive structural hints plus failure controls;
 6. keep visual styling out of the kernel;
-7. add catalog-shape, routing-diversity, and prompt-isolation tests;
-8. verify that the new branch does not promote any source-specific sample.
+7. pair it with existing embedding grammars; add a new grammar only when its integration mechanism is genuinely distinct;
+8. add catalog-shape, routing-diversity, human-gate, joint-composition, and prompt-isolation tests;
+9. verify that the new branch does not promote any source-specific sample.
 
 Collect directions by structural principle, not by accumulating long prompts. A large library stays useful only when routing narrows it before compilation.

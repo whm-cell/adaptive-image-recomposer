@@ -19,7 +19,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 
 SCHEMA_VERSION = "0.1"
-CATALOG_VERSION = "0.2"
+CATALOG_VERSION = "0.3"
 CONTENT_TYPES = {
     "multi_product_comparison",
     "single_product_poster",
@@ -58,7 +58,25 @@ CHANGE_AXES = {
     "palette_material",
     "text_image_relationship",
 }
-ALLOWED_REGION_TRANSFORMS = {"crop", "scale", "translate", "frame"}
+ALLOWED_REGION_TRANSFORMS = {
+    "crop",
+    "scale",
+    "translate",
+    "frame",
+    "alpha_mask",
+    "edge_refine",
+    "color_decontaminate",
+}
+ASSET_SOURCE_KINDS = {
+    "transparent_original",
+    "clean_flat",
+    "flattened_crop",
+    "unavailable",
+}
+ASSET_ALPHA_STATES = {"valid", "opaque_background", "needs_segmentation", "unknown"}
+ASSET_EDGE_STATES = {"clean", "needs_refinement", "unknown"}
+ASSET_BACKGROUND_COMPLEXITIES = {"none", "simple", "complex", "unknown"}
+SELECTION_ACTORS = {"human"}
 
 
 class RecomposerError(RuntimeError):
@@ -534,6 +552,7 @@ def validate_manifest(manifest: Dict[str, Any]) -> Dict[str, Any]:
     objects = _required_list(content, "objects", errors)
     object_ids: set = set()
     locked_object_ids: List[str] = []
+    asset_metadata_count = 0
     for index, item in enumerate(objects):
         prefix = f"content.objects[{index}]"
         if not isinstance(item, dict):
@@ -554,8 +573,40 @@ def validate_manifest(manifest: Dict[str, Any]) -> Dict[str, Any]:
             errors.append(f"{prefix}.verified must be true or false")
         if item.get("bbox") is not None and not _is_bbox(item.get("bbox")):
             errors.append(f"{prefix}.bbox must be normalized [x1,y1,x2,y2]")
+        asset = item.get("asset")
+        if asset is not None:
+            asset_metadata_count += 1
+            if not isinstance(asset, dict):
+                errors.append(f"{prefix}.asset must be an object when provided")
+            else:
+                if asset.get("source_kind") not in ASSET_SOURCE_KINDS:
+                    errors.append(
+                        f"{prefix}.asset.source_kind must be one of {sorted(ASSET_SOURCE_KINDS)}"
+                    )
+                if asset.get("alpha_status") not in ASSET_ALPHA_STATES:
+                    errors.append(
+                        f"{prefix}.asset.alpha_status must be one of {sorted(ASSET_ALPHA_STATES)}"
+                    )
+                if asset.get("edge_status") not in ASSET_EDGE_STATES:
+                    errors.append(
+                        f"{prefix}.asset.edge_status must be one of {sorted(ASSET_EDGE_STATES)}"
+                    )
+                if asset.get("background_complexity", "unknown") not in ASSET_BACKGROUND_COMPLEXITIES:
+                    errors.append(
+                        f"{prefix}.asset.background_complexity must be one of "
+                        f"{sorted(ASSET_BACKGROUND_COMPLEXITIES)}"
+                    )
+                source_path = asset.get("source_path")
+                if source_path is not None and (
+                    not isinstance(source_path, str) or not source_path.strip()
+                ):
+                    errors.append(f"{prefix}.asset.source_path must be a non-empty string when provided")
         if item.get("preserve") == "lock_pixels" and isinstance(item_id, str):
             locked_object_ids.append(item_id)
+            if asset is None:
+                warnings.append(
+                    f"{prefix}.asset is absent; preparation will conservatively infer a flattened crop"
+                )
 
     text_blocks = _required_list(content, "text_blocks", errors)
     text_by_id: Dict[str, Dict[str, Any]] = {}
@@ -748,6 +799,7 @@ def validate_manifest(manifest: Dict[str, Any]) -> Dict[str, Any]:
         "required_text_count": len(must_preserve),
         "content_group_count": len(groups),
         "protected_region_count": len(protected_regions),
+        "asset_metadata_count": asset_metadata_count,
         "blocking_uncertainty_count": sum(
             1 for item in uncertainties if isinstance(item, dict) and item.get("severity") == "blocking"
         ),
@@ -842,6 +894,35 @@ def load_catalog(path: Path) -> Dict[str, Any]:
     visual_systems = catalog.get("visual_systems")
     if not isinstance(visual_systems, list) or not visual_systems:
         raise RecomposerError(f"Strategy catalog has no visual systems: {path}")
+    asset_preparation_modes = catalog.get("asset_preparation_modes")
+    if not isinstance(asset_preparation_modes, list) or not asset_preparation_modes:
+        raise RecomposerError(f"Strategy catalog has no asset preparation modes: {path}")
+    embedding_grammars = catalog.get("embedding_grammars")
+    if not isinstance(embedding_grammars, dict):
+        raise RecomposerError(f"Strategy catalog has no embedding grammars: {path}")
+    for grammar_kind in ("product", "text"):
+        values = embedding_grammars.get(grammar_kind)
+        if not isinstance(values, list) or not values:
+            raise RecomposerError(
+                f"Strategy catalog embedding_grammars.{grammar_kind} must be a non-empty list"
+            )
+        ids = [item.get("id") for item in values if isinstance(item, dict)]
+        if len(ids) != len(values) or any(not isinstance(item, str) or not item for item in ids):
+            raise RecomposerError(
+                f"Every {grammar_kind} embedding grammar requires a non-empty id"
+            )
+        if len(ids) != len(set(ids)):
+            raise RecomposerError(f"{grammar_kind} embedding grammar ids must be unique")
+
+    preparation_ids = [
+        item.get("id") for item in asset_preparation_modes if isinstance(item, dict)
+    ]
+    if len(preparation_ids) != len(asset_preparation_modes) or any(
+        not isinstance(item, str) or not item for item in preparation_ids
+    ):
+        raise RecomposerError("Every asset preparation mode requires a non-empty id")
+    if len(preparation_ids) != len(set(preparation_ids)):
+        raise RecomposerError("Asset preparation mode ids must be unique")
 
     family_ids = [item.get("id") for item in families if isinstance(item, dict)]
     if len(family_ids) != len(families) or any(not isinstance(item, str) or not item for item in family_ids):
@@ -1159,6 +1240,408 @@ def _assign_visual_systems(
         )
 
 
+def _object_asset_metadata(item: Dict[str, Any]) -> Dict[str, Any]:
+    asset = item.get("asset")
+    if isinstance(asset, dict):
+        return {
+            "source_path": asset.get("source_path"),
+            "source_kind": asset.get("source_kind", "unavailable"),
+            "alpha_status": asset.get("alpha_status", "unknown"),
+            "edge_status": asset.get("edge_status", "unknown"),
+            "background_complexity": asset.get("background_complexity", "unknown"),
+            "metadata_source": "manifest",
+        }
+    if item.get("bbox") is not None:
+        return {
+            "source_path": None,
+            "source_kind": "flattened_crop",
+            "alpha_status": "needs_segmentation",
+            "edge_status": "needs_refinement",
+            "background_complexity": "unknown",
+            "metadata_source": "conservative_inference_from_bbox",
+        }
+    return {
+        "source_path": None,
+        "source_kind": "unavailable",
+        "alpha_status": "unknown",
+        "edge_status": "unknown",
+        "background_complexity": "unknown",
+        "metadata_source": "conservative_inference_no_asset",
+    }
+
+
+def build_asset_preparation_plan(
+    manifest: Dict[str, Any], renderer: Optional[str] = None
+) -> Dict[str, Any]:
+    """Plan transparent, fidelity-aware assets before composition is compiled."""
+    active_renderer = renderer or choose_renderer(manifest)
+    items: List[Dict[str, Any]] = []
+    for item in manifest.get("content", {}).get("objects", []):
+        if not isinstance(item, dict) or not item.get("verified"):
+            continue
+        metadata = _object_asset_metadata(item)
+        preserve = item.get("preserve", "semantic")
+        source_kind = metadata["source_kind"]
+        alpha_status = metadata["alpha_status"]
+        if preserve != "lock_pixels" and active_renderer in {"model-led", "generative"}:
+            mode = "semantic-resynthesis"
+            readiness = "ready_for_semantic_render"
+            operations = ["joint_model_render", "identity_audit"]
+        elif source_kind == "transparent_original" and alpha_status == "valid":
+            mode = "use-transparent-original"
+            readiness = "ready_transparent"
+            operations = ["scale", "translate", "contact_shadow", "scene_color_match"]
+        elif source_kind in {"clean_flat", "flattened_crop"}:
+            mode = "segment-protected-edge-band"
+            readiness = "requires_preparation"
+            operations = [
+                "crop",
+                "alpha_mask",
+                "edge_refine",
+                "color_decontaminate",
+                "scale",
+                "translate",
+            ]
+        else:
+            mode = "framed-source-fallback"
+            readiness = "blocked_for_seamless_embedding"
+            operations = ["crop", "scale", "translate", "frame"]
+        items.append(
+            {
+                "object_id": item.get("id"),
+                "label": item.get("label", item.get("id")),
+                "object_type": item.get("type", "object"),
+                "preserve": preserve,
+                "source_bbox": item.get("bbox"),
+                "asset_metadata": metadata,
+                "preparation_mode_id": mode,
+                "readiness": readiness,
+                "operations": operations,
+                "protected_core_policy": (
+                    "source_pixels_unchanged"
+                    if preserve == "lock_pixels"
+                    else "semantic_or_shape_contract_applies"
+                ),
+                "edge_band_policy": (
+                    "alpha, edge color, and decontamination may change only in the silhouette edge band"
+                    if mode == "segment-protected-edge-band"
+                    else "not_applicable"
+                ),
+                "rectangular_background_policy": (
+                    "forbidden"
+                    if mode != "framed-source-fallback"
+                    else "allowed_only_as_an_explicit_visible_frame"
+                ),
+            }
+        )
+    ready_count = sum(
+        item["readiness"] in {"ready_transparent", "ready_for_semantic_render"}
+        for item in items
+    )
+    preparation_count = sum(
+        item["readiness"] == "requires_preparation" for item in items
+    )
+    blocked_count = sum(
+        item["readiness"] == "blocked_for_seamless_embedding" for item in items
+    )
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "job_id": manifest["job_id"],
+        "generated_at": utc_now(),
+        "renderer": active_renderer,
+        "items": items,
+        "summary": {
+            "object_count": len(items),
+            "ready_count": ready_count,
+            "requires_preparation_count": preparation_count,
+            "blocked_count": blocked_count,
+            "seamless_embedding_gate": (
+                "blocked" if blocked_count else "prepare_then_compose" if preparation_count else "ready"
+            ),
+        },
+        "global_policy": [
+            "Remove inherited source backgrounds before layout placement.",
+            "Keep protected core pixels separate from the editable silhouette edge band.",
+            "Do not fake transparency by feathering a rectangular crop into the new canvas.",
+            "Use a visible frame only as an explicit degraded fallback.",
+        ],
+    }
+
+
+def _embedding_plan_for_candidate(
+    candidate: Dict[str, Any],
+    manifest: Dict[str, Any],
+    renderer: str,
+    asset_plan: Dict[str, Any],
+) -> Dict[str, Any]:
+    direction_family = candidate["direction_family"]
+    topology = candidate["topology_family"]
+    blocked = asset_plan["summary"]["blocked_count"] > 0
+    if renderer in {"model-led", "generative"}:
+        product_mode = "semantic-joint-render"
+        text_mode = "joint-typography"
+    elif blocked:
+        product_mode = "framed-fallback"
+        text_mode = "editorial-annotation"
+    else:
+        topology_text = f"{direction_family} {topology}".casefold()
+        if direction_family == "spatial-stage" or any(
+            token in topology_text for token in ("shelf", "stage", "depth", "foreground")
+        ):
+            product_mode = "grounded-stage"
+        elif direction_family == "tactile-organic" or any(
+            token in topology_text for token in ("tactile", "organic", "fold", "ribbon")
+        ):
+            product_mode = "material-tuck"
+        else:
+            product_mode = "transparent-flat"
+
+        if direction_family == "editorial-hierarchy":
+            text_mode = "editorial-annotation"
+        elif direction_family in {"flow-path", "radial-network", "diagrammatic-data"}:
+            text_mode = "contour-rail"
+        elif direction_family in {"spatial-stage", "tactile-organic"}:
+            text_mode = "material-surface"
+        else:
+            text_mode = "direct-on-quiet-field"
+    preparation_needed = asset_plan["summary"]["requires_preparation_count"] > 0
+    return {
+        "product_mode": product_mode,
+        "text_mode": text_mode,
+        "asset_requirement": (
+            "explicit_framed_fallback_or_new_asset_required"
+            if blocked
+            else "prepare_transparent_assets_before_composition"
+            if preparation_needed and renderer not in {"model-led", "generative"}
+            else "ready_or_semantically_rendered"
+        ),
+        "joint_node_rule": (
+            "Treat each bound object-plus-copy group as one semantic composition node. "
+            "Plan object silhouette, type anchor, material interaction, connector, and negative space together."
+        ),
+        "anti_paste_rule": (
+            "No inherited rectangular image background, generic repeated card, detached caption box, "
+            "or ungrounded cutout. Match edge color, local light, contact shadow, texture, and overlap logic."
+        ),
+    }
+
+
+def _wireframe_for_candidate(candidate: Dict[str, Any]) -> str:
+    family = candidate["direction_family"]
+    templates = {
+        "flow-path": "HERO -> node \\ node -> node \\ node -> close",
+        "editorial-hierarchy": "HERO + lead object | staggered story modules | caption rail",
+        "modular-comparison": "hero module -> unequal bands -> comparison rail -> footer",
+        "radial-network": "entry -> orbiting semantic nodes -> focal core -> exit fact",
+        "diagrammatic-data": "legend -> connected nodes/branches -> synthesis point",
+        "spatial-stage": "foreground anchor / mid-depth nodes / rear facts / shared ground",
+        "typographic-graphic": "headline as structure -> objects locked into type rhythm -> fact trail",
+        "tactile-organic": "material gesture -> tucked object nodes -> flowing annotations -> close",
+    }
+    return templates.get(
+        family,
+        "hero anchor -> structurally varied semantic nodes -> controlled close",
+    )
+
+
+def _annotate_direction_cards(
+    shortlist: List[Dict[str, Any]],
+    manifest: Dict[str, Any],
+    renderer: str,
+    asset_plan: Dict[str, Any],
+) -> Dict[str, str]:
+    family_boldness = {
+        "flow-path": 13,
+        "editorial-hierarchy": 7,
+        "modular-comparison": 4,
+        "radial-network": 14,
+        "diagrammatic-data": 8,
+        "spatial-stage": 15,
+        "typographic-graphic": 16,
+        "tactile-organic": 15,
+    }
+    family_safety = {
+        "flow-path": 7,
+        "editorial-hierarchy": 14,
+        "modular-comparison": 16,
+        "radial-network": 3,
+        "diagrammatic-data": 13,
+        "spatial-stage": 7,
+        "typographic-graphic": 5,
+        "tactile-organic": 4,
+    }
+    readiness = asset_plan["summary"]["seamless_embedding_gate"]
+    integration_base = {"ready": 94, "prepare_then_compose": 76, "blocked": 38}[readiness]
+    density = manifest.get("content", {}).get("text_density", "medium")
+    for candidate in shortlist:
+        embedding = _embedding_plan_for_candidate(candidate, manifest, renderer, asset_plan)
+        candidate["embedding_plan"] = embedding
+        candidate["wireframe"] = _wireframe_for_candidate(candidate)
+        compatibility = min(100.0, round(float(candidate["score"]) * 0.7, 1))
+        text_capacity = 92 if density in {"low", "medium"} else 84
+        if candidate["direction_family"] in {
+            "editorial-hierarchy",
+            "modular-comparison",
+            "diagrammatic-data",
+        }:
+            text_capacity += 5
+        boldness = min(
+            100,
+            48 + len(candidate.get("changed_axes", [])) * 5 + family_boldness.get(candidate["direction_family"], 5),
+        )
+        safety = min(
+            100,
+            54 + family_safety.get(candidate["direction_family"], 5) + integration_base * 0.25,
+        )
+        integration = min(
+            100,
+            integration_base
+            + (7 if embedding["product_mode"] in {"grounded-stage", "material-tuck"} else 0),
+        )
+        overall = round(
+            compatibility * 0.35
+            + text_capacity * 0.25
+            + integration * 0.25
+            + safety * 0.15,
+            1,
+        )
+        candidate["decision_scores"] = {
+            "overall": overall,
+            "compatibility": compatibility,
+            "boldness": round(boldness, 1),
+            "production_safety": round(safety, 1),
+            "integration_confidence": round(integration, 1),
+        }
+        candidate["text_capacity"] = (
+            "high" if text_capacity >= 88 else "medium" if text_capacity >= 72 else "low"
+        )
+        candidate["production_risk"] = (
+            "high" if safety < 65 else "medium" if safety < 82 else "low"
+        )
+        candidate["recommendation"] = "alternative"
+
+    recommendations: Dict[str, str] = {}
+    remaining = list(shortlist)
+    if remaining:
+        best = max(remaining, key=lambda item: (item["decision_scores"]["overall"], item["id"]))
+        best["recommendation"] = "best_overall"
+        recommendations["best_overall"] = best["id"]
+        remaining.remove(best)
+    if remaining:
+        bold = max(remaining, key=lambda item: (item["decision_scores"]["boldness"], item["id"]))
+        bold["recommendation"] = "boldest_change"
+        recommendations["boldest_change"] = bold["id"]
+        remaining.remove(bold)
+    if remaining:
+        safe = max(
+            remaining,
+            key=lambda item: (item["decision_scores"]["production_safety"], item["id"]),
+        )
+        safe["recommendation"] = "safest_production"
+        recommendations["safest_production"] = safe["id"]
+    return recommendations
+
+
+def route_fingerprint(route: Dict[str, Any]) -> str:
+    payload = {
+        "job_id": route.get("job_id"),
+        "renderer": route.get("renderer"),
+        "outcome_contract": route.get("outcome_contract"),
+        "target_aspect": route.get("target_aspect"),
+        "candidates": [
+            {
+                "id": item.get("id"),
+                "visual_system_id": item.get("visual_system", {}).get("id"),
+                "product_mode": item.get("embedding_plan", {}).get("product_mode"),
+                "text_mode": item.get("embedding_plan", {}).get("text_mode"),
+            }
+            for item in route.get("candidates", [])
+            if isinstance(item, dict)
+        ],
+    }
+    serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def build_selection_record(
+    route: Dict[str, Any],
+    strategy_id: str,
+    selected_by: str = "human",
+    rationale: str = "",
+) -> Dict[str, Any]:
+    if selected_by not in SELECTION_ACTORS:
+        raise RecomposerError(f"selected_by must be one of {sorted(SELECTION_ACTORS)}")
+    candidate = next(
+        (
+            item
+            for item in route.get("candidates", [])
+            if isinstance(item, dict) and item.get("id") == strategy_id
+        ),
+        None,
+    )
+    if not candidate:
+        raise RecomposerError(f"Strategy {strategy_id} is not in the validated route shortlist")
+    stored_fingerprint = route.get("route_fingerprint")
+    current_fingerprint = route_fingerprint(route)
+    if stored_fingerprint != current_fingerprint:
+        raise RecomposerError("Route fingerprint is missing or stale; rebuild the direction board")
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "job_id": route.get("job_id"),
+        "selected_at": utc_now(),
+        "selected_by": selected_by,
+        "route_fingerprint": current_fingerprint,
+        "selected_strategy_id": strategy_id,
+        "selected_visual_system_id": candidate.get("visual_system", {}).get("id"),
+        "selected_embedding_plan": candidate.get("embedding_plan"),
+        "recommendation_profile": candidate.get("recommendation", "alternative"),
+        "rationale": rationale.strip(),
+        "workflow_transition": {
+            "from": "AWAITING_HUMAN_SELECTION",
+            "to": "DIRECTION_SELECTED",
+        },
+    }
+
+
+def validate_selection_record(
+    route: Dict[str, Any], selection: Dict[str, Any]
+) -> Dict[str, Any]:
+    if not isinstance(selection, dict):
+        raise RecomposerError(
+            "Compilation requires an independent human selection record created after route review"
+        )
+    if route.get("workflow_state") != "AWAITING_HUMAN_SELECTION":
+        raise RecomposerError("Route is not at the human selection checkpoint")
+    transition = selection.get("workflow_transition", {})
+    if transition != {
+        "from": "AWAITING_HUMAN_SELECTION",
+        "to": "DIRECTION_SELECTED",
+    }:
+        raise RecomposerError("Selection record has an invalid workflow transition")
+    if selection.get("job_id") != route.get("job_id"):
+        raise RecomposerError("Selection job_id does not match the route")
+    if selection.get("route_fingerprint") != route_fingerprint(route):
+        raise RecomposerError("Selection record does not match this route fingerprint")
+    strategy_id = selection.get("selected_strategy_id")
+    if not isinstance(strategy_id, str):
+        raise RecomposerError("Selection record requires selected_strategy_id")
+    candidate = next(
+        (
+            item
+            for item in route.get("candidates", [])
+            if isinstance(item, dict) and item.get("id") == strategy_id
+        ),
+        None,
+    )
+    if not candidate:
+        raise RecomposerError(f"Selected strategy {strategy_id} is not in the route shortlist")
+    if selection.get("selected_visual_system_id") != candidate.get("visual_system", {}).get("id"):
+        raise RecomposerError("Selection visual system does not match the selected route lane")
+    if selection.get("selected_by") not in SELECTION_ACTORS:
+        raise RecomposerError("Selection record has an invalid selected_by value")
+    return candidate
+
+
 def build_route_decision(
     manifest: Dict[str, Any], catalog: Dict[str, Any], top_k: Optional[int] = None
 ) -> Dict[str, Any]:
@@ -1211,6 +1694,10 @@ def build_route_decision(
         else candidates[:requested_count]
     )
     _assign_visual_systems(shortlist, manifest, catalog, renderer)
+    asset_plan = build_asset_preparation_plan(manifest, renderer)
+    recommendations = _annotate_direction_cards(
+        shortlist, manifest, renderer, asset_plan
+    )
     unique_direction_families = sorted(
         {item["direction_family"] for item in shortlist}
     )
@@ -1218,10 +1705,11 @@ def build_route_decision(
     unique_visual_families = sorted(
         {item["visual_system"]["visual_family"] for item in shortlist}
     )
-    return {
+    route = {
         "schema_version": SCHEMA_VERSION,
         "job_id": manifest["job_id"],
         "generated_at": utc_now(),
+        "workflow_state": "AWAITING_HUMAN_SELECTION",
         "fidelity_tier": choose_fidelity_tier(manifest),
         "renderer": renderer,
         "outcome_contract": manifest.get("intent", {}).get(
@@ -1233,8 +1721,9 @@ def build_route_decision(
         ),
         "direction_mode": direction_mode,
         "direction_count_requested": requested_count,
-        "selected_strategy_id": shortlist[0]["id"],
         "candidates": [dict(candidate, rank=index) for index, candidate in enumerate(shortlist, start=1)],
+        "recommendations": recommendations,
+        "asset_readiness_summary": asset_plan["summary"],
         "diversity_summary": {
             "candidate_count": len(shortlist),
             "direction_family_count": len(unique_direction_families),
@@ -1246,12 +1735,14 @@ def build_route_decision(
         },
         "rejected": rejected,
         "selection_note": (
-            "This is a divergent concept set, not a list of cosmetic variants. Visually compare all lanes, "
-            "then compile exactly one structural kernel plus its paired visual system."
+            "This is a divergent concept set, not a list of cosmetic variants. The recommendation labels "
+            "are decision aids, not an automatic choice. A human selection record is required before compile."
             if direction_mode == "diverge_then_select"
-            else "The focused shortlist is a compatibility aid; visually review the selected leaf before rendering."
+            else "The focused shortlist is a compatibility aid; a human selection record is still required before compile."
         ),
     }
+    route["route_fingerprint"] = route_fingerprint(route)
+    return route
 
 
 def _find_strategy(catalog: Dict[str, Any], strategy_id: str) -> Dict[str, Any]:
@@ -1355,96 +1846,106 @@ def build_content_graph(manifest: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def build_layout_spec(
-    manifest: Dict[str, Any], route: Dict[str, Any], catalog: Dict[str, Any], strategy_id: Optional[str] = None
+    manifest: Dict[str, Any],
+    route: Dict[str, Any],
+    catalog: Dict[str, Any],
+    selection: Dict[str, Any],
 ) -> Dict[str, Any]:
-    chosen_id = strategy_id or route.get("selected_strategy_id")
-    if not isinstance(chosen_id, str):
-        raise RecomposerError("Route decision does not contain selected_strategy_id")
-    candidate_ids = {candidate.get("id") for candidate in route.get("candidates", []) if isinstance(candidate, dict)}
-    if strategy_id and strategy_id not in candidate_ids:
-        raise RecomposerError(f"Strategy {strategy_id} is not in the validated route shortlist")
+    selected_candidate = validate_selection_record(route, selection)
+    chosen_id = selection["selected_strategy_id"]
     strategy = _find_strategy(catalog, chosen_id)
-    selected_candidate = next(
-        (
-            candidate
-            for candidate in route.get("candidates", [])
-            if isinstance(candidate, dict) and candidate.get("id") == chosen_id
-        ),
-        None,
-    )
-    if not selected_candidate:
-        raise RecomposerError(f"Strategy {chosen_id} is not present in the route shortlist")
     visual_system = selected_candidate.get("visual_system")
     if not isinstance(visual_system, dict) or not visual_system.get("id"):
         raise RecomposerError(
             f"Route candidate {chosen_id} has no paired visual system; rebuild the route"
         )
+    embedding_plan = selected_candidate.get("embedding_plan")
+    if not isinstance(embedding_plan, dict):
+        raise RecomposerError(
+            f"Route candidate {chosen_id} has no embedding plan; rebuild the route"
+        )
     target_delta = manifest["intent"]["target_delta"]
     mandatory_axes = ["topology", "reading_path"] if target_delta == "radical" else []
-    locked_objects = _locked_objects(manifest)
-    required_text = _required_text_blocks(manifest)
     renderer = route["renderer"]
     outcome_contract = manifest.get("intent", {}).get(
         "outcome_contract", "audited_content"
     )
     content_graph = build_content_graph(manifest)
-    if renderer == "model-led":
-        zones: List[Dict[str, Any]] = [
-            {
-                "id": "whole-canvas-joint-reconstruction",
-                "role": "joint_model_render",
-                "content_refs": [group["id"] for group in content_graph["groups"]],
-                "geometry_status": "model_resolved_at_render_time",
-                "intent": (
-                    "Generate title, composition kernel, semantic item nodes, typography, "
-                    "decorative forms, material, and negative space as one coordinated poster."
-                ),
-            }
-        ]
-        coordinate_status = "model_resolved_at_render_time"
-        model_authority = "whole_canvas_joint_reconstruction"
+    asset_plan = build_asset_preparation_plan(manifest, renderer)
+    composition_modes = {
+        "model-led": "joint-model-composition",
+        "generative": "joint-model-composition",
+        "hybrid": "layout-conditioned-hybrid",
+        "locked-composite": "locked-integrated-composite",
+        "deterministic": "code-native-joint-composition",
+    }
+    coordinate_status = (
+        "model_resolved_then_audited"
+        if renderer in {"model-led", "generative"}
+        else "joint_scene_layout_engine_resolved"
+    )
+    authority = {
+        "model-led": "whole_canvas_joint_reconstruction",
+        "generative": "whole_canvas_joint_generation",
+        "hybrid": "layout_conditioned_surfaces_lighting_and_node_integration",
+        "locked-composite": "replaceable_surroundings_with_locked_node_integration",
+        "deterministic": "code_native_whole_canvas_composition",
+    }[renderer]
+    if renderer in {"model-led", "generative"}:
         fidelity_claim = "semantic_identity_plus_audited_copy_no_pixel_fidelity"
+    elif _locked_objects(manifest) or manifest.get("preservation", {}).get("protected_regions"):
+        fidelity_claim = "protected_core_pixels_plus_audited_copy_after_asset_preparation"
     else:
-        zones = [
+        fidelity_claim = "audited_content_with_joint_scene_geometry"
+
+    joint_nodes: List[Dict[str, Any]] = []
+    for group in content_graph["groups"]:
+        joint_nodes.append(
             {
-                "id": "generated-visual-field",
-                "role": "generated_backdrop",
-                "content_refs": [],
-                "geometry_status": "intent_only",
-                "intent": "Provide the non-critical visual field and reserved negative space for overlays.",
+                "id": group["id"],
+                "sequence": group["sequence"],
+                "role": group["role"],
+                "member_refs": group["member_refs"],
+                "product_embedding": embedding_plan["product_mode"],
+                "text_embedding": embedding_plan["text_mode"],
+                "geometry_status": coordinate_status,
+                "integration_contract": [
+                    "plan object silhouette, type anchor, connector, material interaction, and negative space together",
+                    "match local light, contact shadow, edge color, grain, and overlap logic",
+                    "preserve the group association while changing its spatial expression",
+                    "do not place the group inside a generic repeated rectangular card",
+                ],
             }
-        ]
-        if locked_objects or manifest.get("preservation", {}).get("protected_regions"):
-            zones.append(
-                {
-                    "id": "protected-inserts",
-                    "role": "locked_inserts",
-                    "content_refs": [item["id"] for item in locked_objects],
-                    "geometry_status": "requires_layout_engine",
-                    "intent": "Composite protected assets without modifying internal pixels.",
-                }
-            )
-        if required_text:
-            zones.append(
-                {
-                    "id": "exact-copy-overlay",
-                    "role": "deterministic_overlay",
-                    "content_refs": [block["id"] for block in required_text],
-                    "geometry_status": "requires_layout_engine",
-                    "intent": "Place verified copy with deterministic typography and collision checks.",
-                }
-            )
-        coordinate_status = "intent_only_requires_layout_engine"
-        model_authority = "replaceable_visual_field_only"
-        fidelity_claim = (
-            "protected_pixels_when_verified_plus_deterministic_exact_copy"
-            if locked_objects or manifest.get("preservation", {}).get("protected_regions")
-            else "audited_content_with_deterministic_geometry"
         )
+    if content_graph["ungrouped_refs"]:
+        joint_nodes.append(
+            {
+                "id": "global-ungrouped-content",
+                "sequence": 0,
+                "role": "global_copy_or_unbound_subject",
+                "member_refs": content_graph["ungrouped_refs"],
+                "product_embedding": embedding_plan["product_mode"],
+                "text_embedding": embedding_plan["text_mode"],
+                "geometry_status": coordinate_status,
+                "integration_contract": [
+                    "bind global content to the headline, legend, or conclusion hierarchy",
+                    "do not leave content as a floating pasted block",
+                ],
+            }
+        )
+
     return {
         "schema_version": SCHEMA_VERSION,
         "job_id": manifest["job_id"],
         "generated_at": utc_now(),
+        "workflow_state": "RENDER_CONTRACT_COMPILED",
+        "selection": {
+            "route_fingerprint": selection["route_fingerprint"],
+            "selected_strategy_id": chosen_id,
+            "selected_by": selection["selected_by"],
+            "recommendation_profile": selection.get("recommendation_profile"),
+            "rationale": selection.get("rationale", ""),
+        },
         "strategy": {
             "id": strategy["id"],
             "title": strategy["title"],
@@ -1461,9 +1962,10 @@ def build_layout_spec(
             "negative_hints": visual_system.get("negative_hints", []),
         },
         "renderer": renderer,
+        "composition_mode": composition_modes[renderer],
         "outcome_contract": outcome_contract,
         "fidelity_claim": fidelity_claim,
-        "model_authority": model_authority,
+        "model_authority": authority,
         "canvas": {
             "target_aspect": route["target_aspect"],
             "output_usage": manifest["intent"]["output_usage"],
@@ -1478,26 +1980,33 @@ def build_layout_spec(
             "direction_family": strategy["direction_family"],
             "topology_family": strategy["topology_family"],
             "reading_path": strategy["reading_path"],
+            "wireframe": selected_candidate.get("wireframe"),
             "structural_prompt_hints": strategy.get("prompt_hints", []),
             "visual_system_id": visual_system["id"],
             "visual_family": visual_system["visual_family"],
             "visual_prompt_hints": visual_system.get("prompt_hints", []),
             "visual_negative_hints": visual_system.get("negative_hints", []),
         },
-        "model_workflow": (
-            [
-                "perceive_source_roles_and_verified_content",
-                "bind_objects_and_copy_into_content_groups",
-                "suppress_source_layout_grammar",
-                "select_one_dominant_composition_kernel",
-                "solve_the_whole_canvas_jointly",
-                "semantically_resynthesize_visual_objects",
-                "audit_copy_counts_and_group_associations",
-                "edit_the_latest_result_for_one_targeted_defect",
-            ]
-            if renderer == "model-led"
-            else []
-        ),
+        "embedding_grammar": embedding_plan,
+        "asset_readiness": asset_plan["summary"],
+        "joint_nodes": joint_nodes,
+        "production_stages": [
+            "prepare_or_verify_transparent_assets",
+            "solve_composition_kernel_and_all_semantic_nodes_as_one_scene_plan",
+            "render_or_construct_shared_surfaces_connectors_lighting_and_negative_space",
+            "place_exact_copy_and_protected_assets_inside_the_same_node_geometry",
+            "apply_contact_shadows_edge_matching_overlap_and_material_interactions",
+            "audit_copy_group_associations_asset_edges_and_structural_delta",
+        ],
+        "degraded_asset_fallback": {
+            "active": asset_plan["summary"]["blocked_count"] > 0,
+            "mode": "explicit_visible_frame",
+            "policy": (
+                "Use only for an individual source object that cannot be isolated safely. Keep the frame "
+                "visibly intentional and continue to compose the whole canvas jointly. Background-first "
+                "or coordinate-reserved overlay production is not an available workflow."
+            ),
+        },
         "iteration_policy": {
             "mode": manifest.get("render", {}).get(
                 "iteration_mode", "edit_latest_result"
@@ -1507,12 +2016,15 @@ def build_layout_spec(
                 "the composition kernel fails or repair would require moving several content groups"
             ),
         },
-        "zones": zones,
         "coordinate_status": coordinate_status,
     }
 
 
-def build_overlay_spec(manifest: Dict[str, Any], layout_spec: Dict[str, Any]) -> Dict[str, Any]:
+def build_production_layer_spec(
+    manifest: Dict[str, Any],
+    layout_spec: Dict[str, Any],
+    asset_plan: Dict[str, Any],
+) -> Dict[str, Any]:
     required_ids = set(manifest["preservation"]["must_preserve_text_ids"])
     verified_text = [
         {
@@ -1523,10 +2035,11 @@ def build_overlay_spec(manifest: Dict[str, Any], layout_spec: Dict[str, Any]) ->
             "source_bbox": block.get("bbox"),
             "exact": block["id"] in required_ids,
             "placement": (
-                "model_to_resolve_then_audit"
-                if layout_spec["renderer"] == "model-led"
-                else "layout_engine_to_resolve"
+                "joint_model_typography_then_audit"
+                if layout_spec["renderer"] in {"model-led", "generative"}
+                else "resolve_inside_joint_semantic_node"
             ),
+            "embedding_mode": layout_spec["embedding_grammar"]["text_mode"],
         }
         for block in manifest["content"]["text_blocks"]
         if block.get("verified")
@@ -1536,29 +2049,22 @@ def build_overlay_spec(manifest: Dict[str, Any], layout_spec: Dict[str, Any]) ->
         "job_id": manifest["job_id"],
         "strategy_id": layout_spec["strategy"]["id"],
         "renderer": layout_spec["renderer"],
-        "coordinate_status": (
-            "model_resolved_then_audited"
-            if layout_spec["renderer"] == "model-led"
-            else "unresolved"
-        ),
+        "composition_mode": layout_spec["composition_mode"],
+        "coordinate_status": layout_spec["coordinate_status"],
         "text_blocks": verified_text,
+        "prepared_assets": asset_plan["items"],
         "group_bindings": build_content_graph(manifest)["groups"],
         "protected_regions": manifest["preservation"]["protected_regions"],
-        "locked_objects": _locked_objects(manifest),
-        "layout_engine_requirements": (
-            [
-                "audit exact copy after rendering",
-                "audit product-to-value group associations",
-                "escalate to deterministic overlays after two failed targeted repairs",
-            ]
-            if layout_spec["renderer"] == "model-led"
-            else [
-                "calculate final coordinates",
-                "prevent overflow and collisions",
-                "preserve exact copy",
-                "apply only allowed protected-region transforms",
-            ]
-        ),
+        "joint_nodes": layout_spec["joint_nodes"],
+        "integration_requirements": [
+            "calculate the final node geometry before styling isolated layers",
+            "remove inherited rectangular backgrounds from every seamlessly embedded asset",
+            "match edge color, local light direction, contact shadow, grain, and overlap depth",
+            "place exact copy within the same surface or flow grammar as its product",
+            "prevent overflow, collisions, haloing, color spill, and detached-caption behavior",
+            "use cards or source frames only when the plan explicitly marks a fallback",
+        ],
+        "fallback_policy": layout_spec["degraded_asset_fallback"],
     }
 
 
@@ -1580,12 +2086,13 @@ def _imagegen_use_case(manifest: Dict[str, Any]) -> str:
 def compile_prompt(
     manifest: Dict[str, Any], route: Dict[str, Any], layout_spec: Dict[str, Any]
 ) -> str:
-    renderer = route["renderer"]
+    renderer = layout_spec["renderer"]
     required_text = _required_text_blocks(manifest)
     locked_objects = _locked_objects(manifest)
     protected_regions = manifest["preservation"]["protected_regions"]
     strategy = layout_spec["strategy"]
     visual = layout_spec["visual_direction"]
+    embedding = layout_spec["embedding_grammar"]
     avoid = manifest["preservation"]["source_features_to_avoid"]
     forbidden_inference = manifest["preservation"]["forbidden_inference"]
     object_labels = [
@@ -1618,6 +2125,20 @@ def compile_prompt(
             "Concept isolation: execute only this selected structural kernel and its paired visual system. "
             "Do not blend, average, or borrow composition logic from the other shortlisted lanes."
         ),
+        (
+            f"Embedding grammar: products use {embedding['product_mode']}; text uses "
+            f"{embedding['text_mode']}; asset readiness is {embedding['asset_requirement']}."
+        ),
+        (
+            "Joint-scene rule: solve the final geometry of each product, its exact copy, local surface, "
+            "connector, negative space, overlap, edge treatment, and contact shadow together. This is not "
+            "an empty-background-first workflow."
+        ),
+        (
+            "Anti-paste rule: remove inherited rectangular source backgrounds; do not use generic repeated "
+            "cards or detached caption boxes. Match local light, edge color, grain, scale, depth, and overlap "
+            "so each semantic node belongs to the same scene."
+        ),
     ]
     if object_labels:
         lines.append("Subject: " + "; ".join(str(label) for label in object_labels))
@@ -1632,7 +2153,36 @@ def compile_prompt(
             + "."
         )
 
-    if renderer == "model-led":
+    lines.append("Bound semantic nodes:")
+    for group in content_graph["groups"]:
+        member_descriptions: List[str] = []
+        for member in group["resolved_members"]:
+            if member["node_type"] == "object":
+                member_descriptions.append(
+                    f"object {member.get('label', member.get('id'))}"
+                )
+            else:
+                exact_label = "exact text" if member.get("exact") else "text"
+                member_descriptions.append(
+                    f'{exact_label} "{member.get("text", "")}"'
+                )
+        lines.append(
+            f"- Node {group['sequence']} [{group['id']}]: "
+            + "; ".join(member_descriptions)
+        )
+    grouped_refs = {
+        ref for group in content_graph["groups"] for ref in group["member_refs"]
+    }
+    global_exact = [
+        block for block in required_text if block.get("id") not in grouped_refs
+    ]
+    if global_exact:
+        lines.append(
+            "Global exact copy: "
+            + " | ".join(f'"{block["text"]}"' for block in global_exact)
+        )
+
+    if renderer in {"model-led", "generative"}:
         lines.extend(
             [
                 "Rendering mode: model-led whole-canvas joint reconstruction.",
@@ -1650,40 +2200,6 @@ def compile_prompt(
                     "Association policy: every group below is indivisible. Its product, name, values, "
                     "and qualifiers must remain together even when nodes alternate across the composition."
                 ),
-                "Bound semantic nodes:",
-            ]
-        )
-        for group in content_graph["groups"]:
-            member_descriptions: List[str] = []
-            for member in group["resolved_members"]:
-                if member["node_type"] == "object":
-                    member_descriptions.append(
-                        f"object {member.get('label', member.get('id'))}"
-                    )
-                else:
-                    exact_label = "exact text" if member.get("exact") else "text"
-                    member_descriptions.append(
-                        f'{exact_label} \"{member.get("text", "")}\"'
-                    )
-            lines.append(
-                f"- Node {group['sequence']} [{group['id']}]: "
-                + "; ".join(member_descriptions)
-            )
-        grouped_refs = {
-            ref for group in content_graph["groups"] for ref in group["member_refs"]
-        }
-        global_exact = [
-            block
-            for block in required_text
-            if block.get("id") not in grouped_refs
-        ]
-        if global_exact:
-            lines.append(
-                "Global exact copy: "
-                + " | ".join(f'\"{block["text"]}\"' for block in global_exact)
-            )
-        lines.extend(
-            [
                 (
                     "Text constraints: render every exact text node once in its assigned semantic "
                     "location; duplicate surface strings remain separate nodes; add no invented copy."
@@ -1694,35 +2210,55 @@ def compile_prompt(
                 ),
             ]
         )
-    elif renderer == "generative":
-        if required_text:
-            lines.append("Text (verbatim): " + " | ".join(f'\"{block["text"]}\"' for block in required_text))
-            lines.append("Text constraints: render each text node in its intended context; no extra text.")
-        else:
-            lines.append("Text: no text unless explicitly provided by the user.")
     elif renderer == "hybrid":
         lines.extend(
             [
-                "Rendering mode: hybrid backdrop generation.",
-                "Text: render no readable text; reserve clean zones for deterministic overlays.",
-                "Protected assets: treat locked products or evidence as later insert layers; do not redraw labels, faces, or protected pixels.",
+                "Rendering mode: layout-conditioned hybrid joint composition.",
+                (
+                    "Resolve the composition kernel and every semantic node before rendering. Generate "
+                    "surfaces, lighting, connectors, material interactions, and decorative structure around "
+                    "the final node geometry—not as a standalone empty backdrop."
+                ),
+                (
+                    "Place prepared transparent protected assets and exact typography inside those same "
+                    "nodes. Deterministic placement is allowed for fidelity, but it must participate in the "
+                    "shared surface, overlap, shadow, and reading-flow grammar."
+                ),
+                (
+                    "Do not redraw locked labels, faces, evidence, or protected core pixels. Editable alpha "
+                    "and edge correction are limited to the declared silhouette edge band."
+                ),
             ]
         )
     elif renderer == "locked-composite":
         lines.extend(
             [
-                "Rendering mode: locked composite.",
-                "Generate only replaceable surroundings, frames, surfaces, lighting, and connectors.",
-                "Protected assets are inserts, not style references; keep internal pixels and proportions unchanged.",
-                "Text: render no new readable text; use the deterministic overlay specification.",
+                "Rendering mode: locked integrated composite.",
+                (
+                    "Resolve all node geometry first, then construct replaceable surroundings, shared "
+                    "surfaces, lighting, connectors, and typography around the protected cores."
+                ),
+                (
+                    "Prepared assets keep protected internal pixels and proportions unchanged. Blend only "
+                    "through valid alpha, permitted edge-band cleanup, contact shadows, occlusion, and scene "
+                    "color matching; never feather an opaque rectangle into the canvas."
+                ),
             ]
         )
     else:
         lines.extend(
             [
-                "Rendering mode: deterministic code-native layout.",
-                "Build final typography, containers, coordinates, and overlays in HTML, SVG, canvas, or the project's layout engine.",
-                "If decorative bitmap assets are generated, create them separately with no text.",
+                "Rendering mode: deterministic code-native whole-canvas composition.",
+                (
+                    "Use HTML, SVG, canvas, or the project's layout engine to solve final node geometry, "
+                    "typography, prepared transparent assets, shared surfaces, connectors, occlusion, and "
+                    "contact shadows as one composition."
+                ),
+                (
+                    "Do not implement this as background generation followed by coordinate-reserved text or "
+                    "rectangular image overlays. Decorative bitmap material may be generated only as part of "
+                    "the already-solved joint scene."
+                ),
             ]
         )
 
@@ -1730,13 +2266,9 @@ def compile_prompt(
     if locked_objects:
         constraints.append("keep locked object pixels unchanged: " + ", ".join(item["id"] for item in locked_objects))
     if protected_regions:
-        constraints.append("obey every protected-region transform allowance in overlay-spec.json")
+        constraints.append("obey every protected-region transform allowance in production-layer-spec.json")
     if required_text:
-        constraints.append(
-            "use only the exact copy bound above and audit it against overlay-spec.json"
-            if renderer == "model-led"
-            else "source exact copy only from overlay-spec.json"
-        )
+        constraints.append("use only the exact copy bound above and audit it against production-layer-spec.json")
     constraints.append("do not invent brands, claims, labels, fine print, objects, or data")
     constraints.append("change topology and reading path; this must not be a recolor or background swap")
     lines.append("Constraints: " + "; ".join(constraints) + ".")
@@ -1744,7 +2276,7 @@ def compile_prompt(
         lines.append("Avoid source features: " + "; ".join(avoid) + ".")
     if forbidden_inference:
         lines.append("Never infer: " + "; ".join(forbidden_inference) + ".")
-    if renderer == "model-led":
+    if renderer in {"model-led", "generative"}:
         lines.extend(
             [
                 (
@@ -1767,14 +2299,20 @@ def compile_prompt(
     else:
         lines.extend(
             [
-                "Output intent: a polished reconstruction suitable for the named asset use, with clearly reserved overlay zones and no watermark.",
+                (
+                    "Output intent: a polished, fully integrated reconstruction suitable for the named "
+                    "asset use, with no inherited crop rectangles, detached content blocks, or watermark."
+                ),
                 "",
-                "# Deterministic handoff",
+                "# Joint production handoff",
                 "",
                 f"Renderer: {renderer}",
                 f"Strategy leaf: {strategy['reference']}",
-                "Exact copy and protected inserts are defined in overlay-spec.json.",
-                "Final coordinates must be calculated by a layout engine and checked for overflow and collisions.",
+                "Exact copy, prepared assets, group bindings, and integration rules are defined in production-layer-spec.json.",
+                (
+                    "Final node geometry must be calculated as a whole scene and checked for overflow, "
+                    "collisions, alpha halos, detached captions, inconsistent light, and pasted-card artifacts."
+                ),
             ]
         )
     return "\n".join(lines) + "\n"
@@ -1793,11 +2331,18 @@ def compile_retry_guide(
         f"Visual system: {layout_spec['visual_system']['id']}",
         "",
     ]
-    if renderer != "model-led":
+    if renderer not in {"model-led", "generative"}:
         lines.extend(
             [
-                "Repair copy, coordinates, collisions, and protected inserts in the deterministic production layer.",
+                (
+                    "Repair one joint semantic node at a time in the production layer: copy, geometry, "
+                    "alpha edge, contact shadow, overlap, surface binding, or association."
+                ),
                 "Do not regenerate source-locked pixels to solve a local defect.",
+                (
+                    "Do not retreat to an opaque rectangle, detached caption, generic card, or empty "
+                    "background plus overlay when repairing integration."
+                ),
             ]
         )
         return "\n".join(lines) + "\n"
@@ -1819,31 +2364,58 @@ def compile_retry_guide(
 
 def compile_direction_board(route: Dict[str, Any]) -> str:
     """Render the divergent shortlist as comparable concept lanes before selection."""
+    recommendations = route.get("recommendations", {})
     lines = [
         "# Reconstruction direction board",
         "",
+        f"Workflow state: `{route.get('workflow_state', 'unknown')}`",
         f"Mode: {route.get('direction_mode', 'focused')}",
         f"Renderer: {route.get('renderer', 'unknown')}",
+        f"Route fingerprint: `{route.get('route_fingerprint', 'unknown')}`",
         (
-            "Selection rule: compare structural difference first, then visual-system fit and "
-            "fidelity risk. Compile exactly one lane; do not merge lanes."
+            "Human checkpoint: compare structural difference, information capacity, embedding grammar, "
+            "and fidelity risk. Select exactly one lane; recommendation labels are decision aids and never "
+            "authorize automatic compilation."
         ),
+        "",
+        "## Recommendation map",
+        "",
+        f"- Best overall: `{recommendations.get('best_overall', 'not_assigned')}`",
+        f"- Boldest change: `{recommendations.get('boldest_change', 'not_assigned')}`",
+        f"- Safest production: `{recommendations.get('safest_production', 'not_assigned')}`",
         "",
     ]
     for candidate in route.get("candidates", []):
         if not isinstance(candidate, dict):
             continue
         visual = candidate.get("visual_system", {})
+        embedding = candidate.get("embedding_plan", {})
+        scores = candidate.get("decision_scores", {})
         lines.extend(
             [
                 f"## Lane {candidate.get('rank', '?')}: {candidate.get('title', candidate.get('id', 'unknown'))}",
                 "",
+                f"- Recommendation: `{candidate.get('recommendation', 'alternative')}`",
                 f"- Kernel id: `{candidate.get('id', 'unknown')}`",
                 f"- Direction family: `{candidate.get('direction_family', 'unknown')}`",
                 f"- Topology: `{candidate.get('topology_family', 'unknown')}`",
                 f"- Reading path: `{candidate.get('reading_path', 'unknown')}`",
                 f"- Visual system: `{visual.get('id', 'unknown')}` ({visual.get('visual_family', 'unknown')})",
-                f"- Compatibility score: {candidate.get('score', 'unknown')}",
+                f"- Wireframe: `{candidate.get('wireframe', 'not_available')}`",
+                f"- Changed axes: {', '.join(candidate.get('changed_axes', [])) or 'none'}",
+                f"- Product embedding: `{embedding.get('product_mode', 'unknown')}`",
+                f"- Text embedding: `{embedding.get('text_mode', 'unknown')}`",
+                f"- Asset gate: `{embedding.get('asset_requirement', 'unknown')}`",
+                f"- Text capacity: `{candidate.get('text_capacity', 'unknown')}`",
+                f"- Production risk: `{candidate.get('production_risk', 'unknown')}`",
+                (
+                    "- Decision scores: "
+                    f"overall {scores.get('overall', 'unknown')} / "
+                    f"compatibility {scores.get('compatibility', 'unknown')} / "
+                    f"boldness {scores.get('boldness', 'unknown')} / "
+                    f"safety {scores.get('production_safety', 'unknown')} / "
+                    f"integration {scores.get('integration_confidence', 'unknown')}"
+                ),
             ]
         )
         reasons = candidate.get("reasons", [])
@@ -1857,30 +2429,36 @@ def compile_direction_board(route: Dict[str, Any]) -> str:
 
 
 def write_compiled_artifacts(
-    manifest: Dict[str, Any], route: Dict[str, Any], catalog: Dict[str, Any], out_dir: Path, strategy_id: Optional[str] = None
+    manifest: Dict[str, Any],
+    route: Dict[str, Any],
+    selection: Dict[str, Any],
+    catalog: Dict[str, Any],
+    out_dir: Path,
 ) -> Dict[str, Path]:
     validation = validate_manifest(manifest)
     if not validation["valid"]:
         raise RecomposerError("Manifest validation failed:\n- " + "\n- ".join(validation["errors"]))
-    layout_spec = build_layout_spec(manifest, route, catalog, strategy_id=strategy_id)
+    layout_spec = build_layout_spec(manifest, route, catalog, selection)
     content_graph = build_content_graph(manifest)
-    overlay_spec = build_overlay_spec(manifest, layout_spec)
+    asset_plan = build_asset_preparation_plan(manifest, layout_spec["renderer"])
+    production_layers = build_production_layer_spec(manifest, layout_spec, asset_plan)
     prompt = compile_prompt(manifest, route, layout_spec)
     retry_guide = compile_retry_guide(manifest, route, layout_spec)
     direction_board = compile_direction_board(route)
     out_dir.mkdir(parents=True, exist_ok=True)
+    selection_path = out_dir / "selection-record.json"
     graph_path = out_dir / "content-graph.json"
+    asset_path = out_dir / "asset-preparation-plan.json"
     plan_path = out_dir / "reconstruction-plan.json"
-    layout_path = out_dir / "layout-spec.json"
-    overlay_path = out_dir / "overlay-spec.json"
+    production_path = out_dir / "production-layer-spec.json"
     prompt_path = out_dir / "final-prompt.md"
     retry_path = out_dir / "retry-guide.md"
     board_path = out_dir / "direction-board.md"
+    write_json(selection, selection_path)
     write_json(content_graph, graph_path)
+    write_json(asset_plan, asset_path)
     write_json(layout_spec, plan_path)
-    # Compatibility artifact for existing callers; reconstruction-plan.json is canonical.
-    write_json(layout_spec, layout_path)
-    write_json(overlay_spec, overlay_path)
+    write_json(production_layers, production_path)
     with prompt_path.open("w", encoding="utf-8") as handle:
         handle.write(prompt)
     with retry_path.open("w", encoding="utf-8") as handle:
@@ -1888,10 +2466,11 @@ def write_compiled_artifacts(
     with board_path.open("w", encoding="utf-8") as handle:
         handle.write(direction_board)
     return {
+        "selection": selection_path,
         "content_graph": graph_path,
+        "asset_plan": asset_path,
         "plan": plan_path,
-        "layout": layout_path,
-        "overlay": overlay_path,
+        "production_layers": production_path,
         "prompt": prompt_path,
         "retry": retry_path,
         "direction_board": board_path,
@@ -1953,6 +2532,7 @@ def build_qa_report(
     observed_text_source: Optional[str] = None,
     protected_pixels_verified: bool = False,
     visual_review_passed: bool = False,
+    integration_review_passed: bool = False,
 ) -> Dict[str, Any]:
     validation = validate_manifest(manifest)
     layout_delta = score_layout_delta(manifest, layout_spec)
@@ -1999,11 +2579,32 @@ def build_qa_report(
         "pass": True if visual_review_passed else None,
         "method": "manual_visual_review" if visual_review_passed else None,
     }
+    integration_check = {
+        "evaluated": integration_review_passed,
+        "pass": True if integration_review_passed else None,
+        "method": "manual_integration_review" if integration_review_passed else None,
+        "criteria": [
+            "no inherited opaque crop rectangles or accidental halos",
+            "product edges match local color and texture without background spill",
+            "objects have credible contact shadows, occlusion, scale, and shared light direction",
+            "copy belongs to the same surface or flow grammar as its paired object",
+            "semantic nodes do not collapse into generic repeated cards or detached captions",
+        ],
+    }
     if not protected_pixels_verified and manifest["preservation"]["protected_regions"]:
         manual_checks.append("Verify protected pixels against the source or compositing layers.")
     if content_groups and not visual_review_passed:
         manual_checks.append(
             "Verify that every product, name, value, and qualifier remains inside its declared content group."
+        )
+    if not integration_review_passed:
+        manual_checks.extend(
+            [
+                "Confirm prepared product assets have no inherited rectangular backgrounds, alpha halos, or source-background color spill.",
+                "Confirm product edges, local light, contact shadows, grain, scale, occlusion, and overlap belong to the new scene.",
+                "Confirm each product and its copy form one semantic node rather than a pasted image plus detached text block.",
+                "Confirm generic repeated cards or frames appear only where the selected direction explicitly requires them.",
+            ]
         )
     if route.get("renderer") == "model-led" and not visual_review_passed:
         manual_checks.extend(
@@ -2057,9 +2658,11 @@ def build_qa_report(
         "result_image": result,
         "exact_text_check": text_check,
         "association_check": association_check,
+        "integration_check": integration_check,
         "ocr_notes": ocr_notes,
         "protected_pixels_verified": protected_pixels_verified,
         "visual_review_passed": visual_review_passed,
+        "integration_review_passed": integration_review_passed,
         "manual_checks": manual_checks,
         "failures": failures,
     }
