@@ -6,10 +6,12 @@ The direction tree is an extensible idea system, not a lookup table with one ans
 
 ```text
 source and fidelity contract
-├── content graph
+├── closed content budget + unknown-value policy
+├── content graph + group schemas
 └── asset-readiness plan
     └── structural direction family
-        └── topology kernel + reading path
+        └── hard content-capacity gate
+            └── topology kernel + reading path
             └── compatible visual system
                 └── product + text embedding grammar
                     └── direction card
@@ -46,14 +48,15 @@ Embedding is a first-class composition decision, not a post-production patch. Th
 
 For the default `diverge_then_select` mode:
 
-1. score all compatible structural kernels;
-2. diversify across family, topology, and reading path;
-3. pair each shortlisted kernel with a varied compatible visual system;
-4. attach compatible product/text embedding grammars and asset gates;
-5. present six decision-ready cards with wireframes, changed axes, capacity, risk, and recommendation labels;
-6. stop in `AWAITING_HUMAN_SELECTION`;
-7. accept a human-authored selection record bound to the route fingerprint;
-8. compile only that lane into a joint-composition contract.
+1. measure item count, text-node count, required characters, and largest group, then reject insufficient kernels;
+2. score all remaining compatible structural kernels;
+3. diversify across family, topology, and reading path;
+4. pair each shortlisted kernel with a varied compatible visual system;
+5. attach compatible product/text embedding grammars and asset gates;
+6. present six decision-ready cards with wireframes, changed axes, measured capacity margins, risk, and recommendation labels;
+7. stop in `AWAITING_HUMAN_SELECTION`;
+8. accept a human-authored selection record bound to the route fingerprint;
+9. compile only that lane into a joint-composition contract.
 
 The router may return fewer than six only when hard compatibility gates leave fewer valid kernels.
 
@@ -66,6 +69,7 @@ Delete or merge a branch when any of these is true:
 - its difference is only color, texture, typeface, or decoration;
 - its name embeds a client, brand, source image, item count, or aspect-specific one-off;
 - its prompt hints conflict with fidelity or content-association rules;
+- its declared capacity cannot hold the content loads it claims to support;
 - it implements a generic background plus detached cards or coordinate-reserved overlays;
 - it adds an integration mode whose edge, light, texture, grounding, or semantic-node behavior duplicates an existing grammar;
 - it cannot produce a testable structural distinction.

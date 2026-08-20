@@ -17,7 +17,7 @@ Set `verified: true` only after the value is legible or authoritative. Never ver
 
 ```json
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "job_id": "stable-job-id",
   "source": {
     "path": "/absolute/path/image.png",
@@ -42,7 +42,15 @@ Set `verified: true` only after the value is legible or authoritative. Never ver
     "text_density": "high",
     "objects": [],
     "text_blocks": [],
-    "groups": []
+    "groups": [],
+    "contract": {
+      "mode": "closed_world",
+      "unknown_policy": "block",
+      "forbid_undeclared_text": true,
+      "allowed_visible_text_ids": [],
+      "required_item_count": 9,
+      "group_schemas": []
+    }
   },
   "source_layout": {
     "topology": "split background with card grid",
@@ -160,6 +168,31 @@ Every `member_refs` value must resolve to an object or text-block ID. Keep a nam
 ```
 
 Allowed transforms are `crop`, `scale`, `translate`, `frame`, `alpha_mask`, `edge_refine`, and `color_decontaminate`. For a protected object, masking, edge refinement, and color decontamination may affect only the silhouette edge band; the protected core remains unchanged. If a protected region cannot be isolated from a flattened asset, record that limitation in `uncertainties` and use an explicit visible frame or request a clean asset. Do not claim pixel fidelity that the available source cannot support.
+
+## Closed content contract
+
+Use `closed_world` whenever exact copy is required or the image compares multiple items. `allowed_visible_text_ids` is the complete visible-text whitelist, not merely a required-text list. Every required ID must be present, verified, and exact. `forbid_undeclared_text` must be true. `required_item_count` must equal `content.item_count`.
+
+Declare the shape of every repeated semantic group:
+
+```json
+{
+  "role": "comparison_item",
+  "required_count": 9,
+  "required_object_types": {"product": 1},
+  "required_text_kinds": {"item_name": 1, "data": 2}
+}
+```
+
+Validation rejects a missing group, extra group, or wrong member composition before routing. For `multi_product_comparison`, declared product cardinality must equal `content.item_count`, and every product must belong to exactly one schema-bound comparison group. Optional `cardinality` on an object or text block is a positive integer and is used by validation, capacity routing, prompting, and QA. Do not create extra nodes to make a layout look full.
+
+Choose one unknown-value policy:
+
+- `block`: stop until the value is verified;
+- `explicit_missing`: show only a verified missing-value literal whose text ID is whitelisted;
+- `omit_dimension`: omit a declared text kind consistently and list it in `omitted_text_kinds`.
+
+Never allow a generator to guess an unknown value. `open_world` is reserved for low-risk freeform work without an exact-copy obligation.
 
 ## Uncertainties and blocking rules
 

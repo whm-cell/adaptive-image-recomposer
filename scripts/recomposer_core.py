@@ -13,13 +13,19 @@ import shutil
 import struct
 import subprocess
 import unicodedata
+import uuid
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 
-SCHEMA_VERSION = "0.1"
-CATALOG_VERSION = "0.3"
+SCHEMA_VERSION = "0.2"
+CATALOG_VERSION = "0.4"
+POLICY_VERSION = "0.3"
+SKILL_PROTOCOL_VERSION = "2"
+SKILL_PACK_FILENAME = "skill-pack.json"
+SKILL_ROOT = Path(__file__).resolve().parent.parent
 CONTENT_TYPES = {
     "multi_product_comparison",
     "single_product_poster",
@@ -77,6 +83,17 @@ ASSET_ALPHA_STATES = {"valid", "opaque_background", "needs_segmentation", "unkno
 ASSET_EDGE_STATES = {"clean", "needs_refinement", "unknown"}
 ASSET_BACKGROUND_COMPLEXITIES = {"none", "simple", "complex", "unknown"}
 SELECTION_ACTORS = {"human"}
+RENDER_ATTEMPT_KINDS = {"initial", "targeted_repair", "provider_retry"}
+RENDER_PROVIDER_STATUSES = {"returned", "provider_failure", "cancelled_before_call"}
+MAX_HUMAN_AUTHORIZED_FOLLOWUP_CALLS = 2
+CONTENT_CONTRACT_MODES = {"closed_world", "open_world"}
+UNKNOWN_POLICIES = {"block", "explicit_missing", "omit_dimension"}
+CAPACITY_FIELDS = {
+    "max_required_text_nodes",
+    "max_required_text_chars",
+    "max_group_text_chars",
+    "max_group_count",
+}
 
 
 class RecomposerError(RuntimeError):
@@ -113,6 +130,94 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def canonical_json_sha256(value: Any) -> str:
+    """Return the SHA-256 of one stable JSON representation."""
+    serialized = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def load_skill_pack(root: Optional[Path] = None) -> Dict[str, Any]:
+    """Load and verify the immutable file inventory for this Skill."""
+    skill_root = (root or SKILL_ROOT).expanduser().resolve()
+    pack_path = skill_root / SKILL_PACK_FILENAME
+    pack = load_json(pack_path)
+    expected_versions = {
+        "protocol_version": SKILL_PROTOCOL_VERSION,
+        "schema_version": SCHEMA_VERSION,
+        "catalog_version": CATALOG_VERSION,
+        "policy_version": POLICY_VERSION,
+    }
+    if pack.get("skill_id") != "adaptive-image-recomposer":
+        raise RecomposerError(f"Unexpected skill_id in {pack_path}")
+    if not isinstance(pack.get("skill_version"), str) or not pack["skill_version"]:
+        raise RecomposerError(f"skill_version is required in {pack_path}")
+    for field, expected in expected_versions.items():
+        if pack.get(field) != expected:
+            raise RecomposerError(
+                f"Unsupported {field} in {pack_path}: expected {expected}"
+            )
+    cli = pack.get("cli")
+    if not isinstance(cli, dict) or cli.get("entrypoint") != "scripts/recompose.py":
+        raise RecomposerError(f"Unsupported CLI entrypoint in {pack_path}")
+    files = pack.get("files")
+    if not isinstance(files, list) or not files:
+        raise RecomposerError(f"Skill Pack has no controlled files: {pack_path}")
+    seen: set[str] = set()
+    for record in files:
+        if not isinstance(record, dict):
+            raise RecomposerError(f"Skill Pack file entries must be objects: {pack_path}")
+        relative = record.get("path")
+        expected_digest = record.get("sha256")
+        if not isinstance(relative, str) or not relative:
+            raise RecomposerError(f"Skill Pack file path is missing: {pack_path}")
+        relative_path = Path(relative)
+        if (
+            relative_path.is_absolute()
+            or ".." in relative_path.parts
+            or "__pycache__" in relative_path.parts
+            or relative_path.suffix == ".pyc"
+        ):
+            raise RecomposerError(f"Unsafe or transient Skill Pack path: {relative}")
+        if relative in seen:
+            raise RecomposerError(f"Duplicate Skill Pack path: {relative}")
+        seen.add(relative)
+        resolved = (skill_root / relative_path).resolve()
+        try:
+            resolved.relative_to(skill_root)
+        except ValueError as exc:
+            raise RecomposerError(f"Skill Pack path escapes its root: {relative}") from exc
+        if not resolved.is_file():
+            raise RecomposerError(f"Controlled Skill file does not exist: {relative}")
+        if not isinstance(expected_digest, str) or sha256_file(resolved) != expected_digest:
+            raise RecomposerError(f"Controlled Skill file digest mismatch: {relative}")
+    digest_payload = {key: value for key, value in pack.items() if key != "content_digest"}
+    expected_content_digest = canonical_json_sha256(digest_payload)
+    if pack.get("content_digest") != expected_content_digest:
+        raise RecomposerError(f"Skill Pack content digest mismatch: {pack_path}")
+    if cli["entrypoint"] not in seen:
+        raise RecomposerError("Skill Pack CLI entrypoint is not a controlled file")
+    return pack
+
+
+def skill_pack_ref(pack: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
+    """Project the immutable fields pinned by every routed job."""
+    loaded = pack or load_skill_pack()
+    return {
+        "id": loaded["skill_id"],
+        "version": loaded["skill_version"],
+        "content_digest": loaded["content_digest"],
+        "protocol_version": loaded["protocol_version"],
+        "schema_version": loaded["schema_version"],
+        "catalog_version": loaded["catalog_version"],
+        "policy_version": loaded["policy_version"],
+    }
 
 
 def _jpeg_dimensions(path: Path) -> Tuple[int, int]:
@@ -373,7 +478,11 @@ def run_tesseract(path: Path, requested_language: str = "auto") -> Dict[str, Any
     }
 
 
-def create_manifest_draft(image_path: Path, ocr: str = "auto") -> Dict[str, Any]:
+def create_manifest_draft(
+    image_path: Path,
+    ocr: str = "auto",
+    job_id: Optional[str] = None,
+) -> Dict[str, Any]:
     image_path = image_path.expanduser().resolve()
     if not image_path.is_file():
         raise RecomposerError(f"Input image does not exist: {image_path}")
@@ -384,7 +493,11 @@ def create_manifest_draft(image_path: Path, ocr: str = "auto") -> Dict[str, Any]
     density = "high" if block_count >= 18 else "medium" if block_count >= 6 else "low"
     mime, _ = mimetypes.guess_type(str(image_path))
     job_stem = re.sub(r"[^a-zA-Z0-9-]+", "-", image_path.stem).strip("-").lower() or "image"
-    job_id = f"{job_stem}-{digest[:8]}"
+    resolved_job_id = job_id or f"{job_stem}-{digest[:8]}"
+    if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}", resolved_job_id):
+        raise RecomposerError(
+            "job_id must contain 1-128 letters, digits, dots, underscores, or hyphens"
+        )
     uncertainties: List[Dict[str, Any]] = [
         {
             "id": "semantic-inspection-required",
@@ -416,7 +529,7 @@ def create_manifest_draft(image_path: Path, ocr: str = "auto") -> Dict[str, Any]
         )
     return {
         "schema_version": SCHEMA_VERSION,
-        "job_id": job_id,
+        "job_id": resolved_job_id,
         "created_at": utc_now(),
         "source": {
             "path": str(image_path),
@@ -445,6 +558,14 @@ def create_manifest_draft(image_path: Path, ocr: str = "auto") -> Dict[str, Any]
             "objects": [],
             "text_blocks": ocr_result["text_blocks"],
             "groups": [],
+            "contract": {
+                "mode": "closed_world",
+                "unknown_policy": "block",
+                "forbid_undeclared_text": True,
+                "allowed_visible_text_ids": [],
+                "required_item_count": 0,
+                "group_schemas": [],
+            },
         },
         "source_layout": {
             "topology": "",
@@ -499,6 +620,13 @@ def _required_list(parent: Dict[str, Any], key: str, errors: List[str]) -> List[
     return value
 
 
+def _node_cardinality(node: Dict[str, Any]) -> int:
+    value = node.get("cardinality", 1)
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return value
+    return 1
+
+
 def validate_manifest(manifest: Dict[str, Any]) -> Dict[str, Any]:
     errors: List[str] = []
     warnings: List[str] = []
@@ -551,6 +679,7 @@ def validate_manifest(manifest: Dict[str, Any]) -> Dict[str, Any]:
 
     objects = _required_list(content, "objects", errors)
     object_ids: set = set()
+    object_by_id: Dict[str, Dict[str, Any]] = {}
     locked_object_ids: List[str] = []
     asset_metadata_count = 0
     for index, item in enumerate(objects):
@@ -565,6 +694,14 @@ def validate_manifest(manifest: Dict[str, Any]) -> Dict[str, Any]:
             errors.append(f"Duplicate object id: {item_id}")
         else:
             object_ids.add(item_id)
+            object_by_id[item_id] = item
+        cardinality = item.get("cardinality", 1)
+        if (
+            not isinstance(cardinality, int)
+            or isinstance(cardinality, bool)
+            or cardinality < 1
+        ):
+            errors.append(f"{prefix}.cardinality must be a positive integer when provided")
         if item.get("preserve") not in PRESERVE_MODES:
             errors.append(f"{prefix}.preserve must be one of {sorted(PRESERVE_MODES)}")
         if item.get("evidence") not in EVIDENCE_TYPES:
@@ -622,6 +759,13 @@ def validate_manifest(manifest: Dict[str, Any]) -> Dict[str, Any]:
             errors.append(f"Duplicate text block id: {block_id}")
         else:
             text_by_id[block_id] = block
+        cardinality = block.get("cardinality", 1)
+        if (
+            not isinstance(cardinality, int)
+            or isinstance(cardinality, bool)
+            or cardinality < 1
+        ):
+            errors.append(f"{prefix}.cardinality must be a positive integer when provided")
         if not isinstance(block.get("text"), str) or not block.get("text", "").strip():
             errors.append(f"{prefix}.text must be a non-empty string")
         if block.get("importance") not in IMPORTANCE_LEVELS:
@@ -711,6 +855,211 @@ def validate_manifest(manifest: Dict[str, Any]) -> Dict[str, Any]:
         if block.get("importance") == "required" and block.get("lock_exact") and block_id not in must_preserve:
             warnings.append(f"Exact required text is not listed in must_preserve_text_ids: {block_id}")
 
+    contract_value = content.get("contract")
+    contract: Dict[str, Any]
+    if not isinstance(contract_value, dict):
+        errors.append("content.contract must be an object")
+        contract = {}
+    else:
+        contract = contract_value
+    contract_mode = contract.get("mode")
+    if contract_mode not in CONTENT_CONTRACT_MODES:
+        errors.append(f"content.contract.mode must be one of {sorted(CONTENT_CONTRACT_MODES)}")
+    unknown_policy = contract.get("unknown_policy")
+    if unknown_policy not in UNKNOWN_POLICIES:
+        errors.append(f"content.contract.unknown_policy must be one of {sorted(UNKNOWN_POLICIES)}")
+    forbid_undeclared_text = contract.get("forbid_undeclared_text")
+    if not isinstance(forbid_undeclared_text, bool):
+        errors.append("content.contract.forbid_undeclared_text must be true or false")
+    if contract_mode == "closed_world" and forbid_undeclared_text is not True:
+        errors.append("closed_world content requires forbid_undeclared_text=true")
+
+    allowed_visible_value = contract.get("allowed_visible_text_ids")
+    allowed_visible_ids: List[str]
+    if not isinstance(allowed_visible_value, list):
+        errors.append("content.contract.allowed_visible_text_ids must be a list")
+        allowed_visible_ids = []
+    else:
+        allowed_visible_ids = allowed_visible_value
+    if any(not isinstance(item, str) or not item for item in allowed_visible_ids):
+        errors.append("content.contract.allowed_visible_text_ids must contain non-empty strings")
+    if len(allowed_visible_ids) != len(set(allowed_visible_ids)):
+        errors.append("content.contract.allowed_visible_text_ids contains duplicates")
+    for block_id in allowed_visible_ids:
+        block = text_by_id.get(block_id)
+        if block is None:
+            errors.append(f"Allowed visible text id does not exist: {block_id}")
+        elif not block.get("verified"):
+            errors.append(f"Allowed visible text is not verified: {block_id}")
+    missing_allowed_required = sorted(set(must_preserve) - set(allowed_visible_ids))
+    if missing_allowed_required:
+        errors.append(
+            "Required text ids are absent from the allowed visible-text whitelist: "
+            + ", ".join(missing_allowed_required)
+        )
+
+    required_item_count = contract.get("required_item_count")
+    if (
+        not isinstance(required_item_count, int)
+        or isinstance(required_item_count, bool)
+        or required_item_count < 0
+    ):
+        errors.append("content.contract.required_item_count must be a non-negative integer")
+    elif required_item_count != content.get("item_count"):
+        errors.append(
+            "content.contract.required_item_count must equal content.item_count"
+        )
+
+    group_schemas_value = contract.get("group_schemas")
+    group_schemas: List[Any]
+    if not isinstance(group_schemas_value, list):
+        errors.append("content.contract.group_schemas must be a list")
+        group_schemas = []
+    else:
+        group_schemas = group_schemas_value
+    groups_by_role: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for group in groups:
+        if isinstance(group, dict) and isinstance(group.get("role"), str):
+            groups_by_role[group["role"]].append(group)
+    schema_roles: set[str] = set()
+    for index, schema in enumerate(group_schemas):
+        prefix = f"content.contract.group_schemas[{index}]"
+        if not isinstance(schema, dict):
+            errors.append(f"{prefix} must be an object")
+            continue
+        role = schema.get("role")
+        if not isinstance(role, str) or not role.strip():
+            errors.append(f"{prefix}.role must be a non-empty string")
+            continue
+        if role in schema_roles:
+            errors.append(f"Duplicate group schema role: {role}")
+        schema_roles.add(role)
+        required_count = schema.get("required_count")
+        if (
+            not isinstance(required_count, int)
+            or isinstance(required_count, bool)
+            or required_count < 1
+        ):
+            errors.append(f"{prefix}.required_count must be a positive integer")
+            continue
+        expected_object_types = schema.get("required_object_types", {})
+        expected_text_kinds = schema.get("required_text_kinds", {})
+        for field, value in (
+            ("required_object_types", expected_object_types),
+            ("required_text_kinds", expected_text_kinds),
+        ):
+            if not isinstance(value, dict) or any(
+                not isinstance(kind, str)
+                or not kind
+                or not isinstance(count, int)
+                or isinstance(count, bool)
+                or count < 1
+                for kind, count in value.items()
+            ):
+                errors.append(
+                    f"{prefix}.{field} must map non-empty names to positive integer counts"
+                )
+        matching_groups = groups_by_role.get(role, [])
+        if len(matching_groups) != required_count:
+            errors.append(
+                f"Group schema {role} requires {required_count} groups, found {len(matching_groups)}"
+            )
+        if isinstance(expected_object_types, dict) and isinstance(expected_text_kinds, dict):
+            for group in matching_groups:
+                actual_object_types: Counter[str] = Counter()
+                actual_text_kinds: Counter[str] = Counter()
+                for ref in group.get("member_refs", []):
+                    if ref in object_by_id:
+                        item = object_by_id[ref]
+                        actual_object_types[str(item.get("type", "object"))] += _node_cardinality(item)
+                    elif ref in text_by_id:
+                        block = text_by_id[ref]
+                        actual_text_kinds[str(block.get("kind", "copy"))] += _node_cardinality(block)
+                if actual_object_types != Counter(expected_object_types):
+                    errors.append(
+                        f"Content group {group.get('id')} object composition does not match schema {role}"
+                    )
+                if actual_text_kinds != Counter(expected_text_kinds):
+                    errors.append(
+                        f"Content group {group.get('id')} text composition does not match schema {role}"
+                    )
+
+    closed_world_required = bool(intent.get("exact_text_required")) or content.get("type") == "multi_product_comparison"
+    if closed_world_required and contract_mode != "closed_world":
+        errors.append(
+            "Exact-copy and multi-product comparison jobs require content.contract.mode=closed_world"
+        )
+    if content.get("type") == "multi_product_comparison" and content.get("item_count", 0) > 1:
+        comparison_roles = {
+            schema.get("role")
+            for schema in group_schemas
+            if isinstance(schema, dict)
+            and schema.get("required_count") == content.get("item_count")
+            and isinstance(schema.get("required_object_types"), dict)
+            and schema.get("required_object_types", {}).get("product", 0) == 1
+        }
+        matching_item_schema = bool(comparison_roles)
+        product_object_ids = {
+            object_id
+            for object_id, item in object_by_id.items()
+            if item.get("type") == "product"
+        }
+        declared_product_count = sum(
+            _node_cardinality(object_by_id[object_id])
+            for object_id in product_object_ids
+        )
+        if declared_product_count != content.get("item_count"):
+            errors.append(
+                "multi_product_comparison product cardinality must equal content.item_count: "
+                f"expected {content.get('item_count')}, found {declared_product_count}"
+            )
+        comparison_group_ids = {
+            group.get("id")
+            for group in groups
+            if isinstance(group, dict) and group.get("role") in comparison_roles
+        }
+        unbound_product_ids = sorted(
+            object_id
+            for object_id in product_object_ids
+            if grouped_refs.get(object_id) not in comparison_group_ids
+        )
+        if unbound_product_ids:
+            errors.append(
+                "Every comparison product must belong to exactly one schema-bound item group: "
+                + ", ".join(unbound_product_ids)
+            )
+        if not matching_item_schema:
+            errors.append(
+                "multi_product_comparison requires a group schema covering every item and one product per group"
+            )
+    if unknown_policy == "explicit_missing":
+        explicit_missing_ids = contract.get("explicit_missing_text_ids")
+        if not isinstance(explicit_missing_ids, list) or not explicit_missing_ids:
+            errors.append(
+                "explicit_missing unknown policy requires content.contract.explicit_missing_text_ids"
+            )
+        elif any(item not in allowed_visible_ids for item in explicit_missing_ids):
+            errors.append("explicit_missing_text_ids must be present in the visible-text whitelist")
+    if unknown_policy == "omit_dimension":
+        omitted_kinds = contract.get("omitted_text_kinds")
+        if not isinstance(omitted_kinds, list) or not omitted_kinds or any(
+            not isinstance(item, str) or not item for item in omitted_kinds
+        ):
+            errors.append(
+                "omit_dimension unknown policy requires non-empty content.contract.omitted_text_kinds"
+            )
+        else:
+            forbidden_allowed_ids = [
+                block_id
+                for block_id in allowed_visible_ids
+                if text_by_id.get(block_id, {}).get("kind") in set(omitted_kinds)
+            ]
+            if forbidden_allowed_ids:
+                errors.append(
+                    "Omitted text kinds cannot appear in the visible-text whitelist: "
+                    + ", ".join(forbidden_allowed_ids)
+                )
+
     protected_regions = _required_list(preservation, "protected_regions", errors)
     protected_region_ids: set = set()
     for index, region in enumerate(protected_regions):
@@ -794,10 +1143,18 @@ def validate_manifest(manifest: Dict[str, Any]) -> Dict[str, Any]:
         )
 
     stats = {
-        "object_count": len(objects),
-        "text_block_count": len(text_blocks),
-        "required_text_count": len(must_preserve),
+        "object_count": sum(_node_cardinality(item) for item in objects if isinstance(item, dict)),
+        "product_count": sum(
+            _node_cardinality(item)
+            for item in objects
+            if isinstance(item, dict) and item.get("type") == "product"
+        ),
+        "text_block_count": sum(_node_cardinality(item) for item in text_blocks if isinstance(item, dict)),
+        "required_text_count": sum(
+            _node_cardinality(text_by_id[item]) for item in must_preserve if item in text_by_id
+        ),
         "content_group_count": len(groups),
+        "content_contract_mode": contract_mode,
         "protected_region_count": len(protected_regions),
         "asset_metadata_count": asset_metadata_count,
         "blocking_uncertainty_count": sum(
@@ -873,6 +1230,17 @@ def choose_renderer(manifest: Dict[str, Any]) -> str:
     )
     if outcome_contract == "pixel_fidelity":
         return "locked-composite"
+    content_contract = manifest.get("content", {}).get("contract", {})
+    closed_world_dense = (
+        content_contract.get("mode") == "closed_world"
+        and bool(manifest.get("intent", {}).get("exact_text_required"))
+        and (
+            content_type in {"multi_product_comparison", "dense_infographic", "screenshot_ui"}
+            or manifest.get("content", {}).get("text_density") == "high"
+        )
+    )
+    if closed_world_dense and not pixel_locked:
+        return "hybrid"
     if outcome_contract == "creative_reconstruction" and tier != "F3" and not pixel_locked:
         return "model-led"
     if tier == "F3":
@@ -882,6 +1250,102 @@ def choose_renderer(manifest: Dict[str, Any]) -> str:
     if tier in {"F1", "F2"}:
         return "hybrid"
     return "generative"
+
+
+def measure_content_load(manifest: Dict[str, Any]) -> Dict[str, int]:
+    """Measure immutable content that a reconstruction lane must carry."""
+    content = manifest.get("content", {})
+    required_ids = set(manifest.get("preservation", {}).get("must_preserve_text_ids", []))
+    text_by_id = {
+        item.get("id"): item
+        for item in content.get("text_blocks", [])
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    }
+    required_blocks = [text_by_id[item] for item in required_ids if item in text_by_id]
+    object_count = sum(
+        _node_cardinality(item)
+        for item in content.get("objects", [])
+        if isinstance(item, dict)
+    )
+    required_text_node_count = sum(_node_cardinality(item) for item in required_blocks)
+    required_text_char_count = sum(
+        len(re.sub(r"\s+", "", unicodedata.normalize("NFKC", str(item.get("text", "")))))
+        * _node_cardinality(item)
+        for item in required_blocks
+    )
+    max_group_required_text_chars = 0
+    for group in content.get("groups", []):
+        if not isinstance(group, dict):
+            continue
+        group_chars = sum(
+            len(
+                re.sub(
+                    r"\s+",
+                    "",
+                    unicodedata.normalize("NFKC", str(text_by_id[ref].get("text", ""))),
+                )
+            )
+            * _node_cardinality(text_by_id[ref])
+            for ref in group.get("member_refs", [])
+            if ref in required_ids and ref in text_by_id
+        )
+        max_group_required_text_chars = max(max_group_required_text_chars, group_chars)
+    return {
+        "item_count": int(content.get("item_count", 0)),
+        "object_node_count": object_count,
+        "required_text_node_count": required_text_node_count,
+        "required_text_char_count": required_text_char_count,
+        "group_count": len(
+            [item for item in content.get("groups", []) if isinstance(item, dict)]
+        ),
+        "max_group_required_text_chars": max_group_required_text_chars,
+    }
+
+
+def assess_strategy_capacity(
+    strategy: Dict[str, Any], manifest: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Return a hard capacity decision, not a stylistic confidence score."""
+    load = measure_content_load(manifest)
+    capacity = strategy.get("capacity", {})
+    limits = {
+        field: capacity.get(field)
+        for field in sorted(CAPACITY_FIELDS)
+    }
+    comparisons = {
+        "max_required_text_nodes": load["required_text_node_count"],
+        "max_required_text_chars": load["required_text_char_count"],
+        "max_group_text_chars": load["max_group_required_text_chars"],
+        "max_group_count": load["group_count"],
+    }
+    failures: List[str] = []
+    margins: Dict[str, Optional[int]] = {}
+    utilizations: List[float] = []
+    for field, observed in comparisons.items():
+        limit = limits.get(field)
+        if not isinstance(limit, int) or isinstance(limit, bool) or limit < 0:
+            failures.append(f"strategy capacity field {field} is invalid")
+            margins[field] = None
+            continue
+        margins[field] = limit - observed
+        if limit == 0:
+            utilization = 0.0 if observed == 0 else 1.0
+        else:
+            utilization = observed / limit
+        utilizations.append(utilization)
+        if observed > limit:
+            failures.append(f"{field} load {observed} exceeds limit {limit}")
+    passed = not failures
+    return {
+        "pass": passed,
+        "status": "pass" if passed else "reject",
+        "load": load,
+        "limits": limits,
+        "margins": margins,
+        "max_utilization": round(max(utilizations, default=0.0), 4),
+        "failures": failures,
+        "hard_rejections": failures,
+    }
 
 
 def load_catalog(path: Path) -> Dict[str, Any]:
@@ -980,9 +1444,23 @@ def load_catalog(path: Path) -> Dict[str, Any]:
             "aspects",
             "changed_axes",
             "prompt_hints",
+            "capacity",
         ):
             if field not in strategy:
                 raise RecomposerError(f"Strategy {strategy_id} is missing {field}")
+        capacity = strategy.get("capacity")
+        if not isinstance(capacity, dict):
+            raise RecomposerError(f"Strategy {strategy_id} capacity must be an object")
+        for field in CAPACITY_FIELDS:
+            value = capacity.get(field)
+            if (
+                not isinstance(value, int)
+                or isinstance(value, bool)
+                or value < 0
+            ):
+                raise RecomposerError(
+                    f"Strategy {strategy_id} capacity.{field} must be a non-negative integer"
+                )
     if len(strategy_ids) != len(set(strategy_ids)):
         raise RecomposerError(f"Strategy ids must be unique: {path}")
 
@@ -1038,6 +1516,9 @@ def _strategy_compatibility(
         return None, [], [f"target aspect {target_aspect} is unsupported"]
     if protected and not strategy.get("supports_protected_regions", False):
         return None, [], ["protected regions are unsupported"]
+    capacity_check = assess_strategy_capacity(strategy, manifest)
+    if capacity_check["status"] != "pass":
+        return None, [], capacity_check["failures"]
 
     changed_axes = set(strategy.get("changed_axes", []))
     if intent.get("target_delta") == "radical":
@@ -1053,6 +1534,11 @@ def _strategy_compatibility(
     reasons.append(f"supports {renderer} rendering")
     score += 8.0
     reasons.append(f"supports {target_aspect} output")
+    capacity_headroom = max(0.0, 1.0 - float(capacity_check["max_utilization"]))
+    score += round(capacity_headroom * 10.0, 2)
+    reasons.append(
+        f"content capacity passes with peak utilization {capacity_check['max_utilization']:.0%}"
+    )
     if protected:
         score += 5.0
         reasons.append("supports protected regions")
@@ -1472,19 +1958,14 @@ def _annotate_direction_cards(
     }
     readiness = asset_plan["summary"]["seamless_embedding_gate"]
     integration_base = {"ready": 94, "prepare_then_compose": 76, "blocked": 38}[readiness]
-    density = manifest.get("content", {}).get("text_density", "medium")
     for candidate in shortlist:
         embedding = _embedding_plan_for_candidate(candidate, manifest, renderer, asset_plan)
         candidate["embedding_plan"] = embedding
         candidate["wireframe"] = _wireframe_for_candidate(candidate)
         compatibility = min(100.0, round(float(candidate["score"]) * 0.7, 1))
-        text_capacity = 92 if density in {"low", "medium"} else 84
-        if candidate["direction_family"] in {
-            "editorial-hierarchy",
-            "modular-comparison",
-            "diagrammatic-data",
-        }:
-            text_capacity += 5
+        capacity_check = candidate.get("capacity_check", {})
+        peak_utilization = float(capacity_check.get("max_utilization", 1.0))
+        text_capacity = max(0.0, round(100.0 - peak_utilization * 50.0, 1))
         boldness = min(
             100,
             48 + len(candidate.get("changed_axes", [])) * 5 + family_boldness.get(candidate["direction_family"], 5),
@@ -1544,23 +2025,21 @@ def _annotate_direction_cards(
 
 def route_fingerprint(route: Dict[str, Any]) -> str:
     payload = {
+        "skill_ref": route.get("skill_ref"),
+        "manifest_digest": route.get("manifest_digest"),
+        "catalog_ref": route.get("catalog_ref"),
         "job_id": route.get("job_id"),
         "renderer": route.get("renderer"),
         "outcome_contract": route.get("outcome_contract"),
         "target_aspect": route.get("target_aspect"),
-        "candidates": [
-            {
-                "id": item.get("id"),
-                "visual_system_id": item.get("visual_system", {}).get("id"),
-                "product_mode": item.get("embedding_plan", {}).get("product_mode"),
-                "text_mode": item.get("embedding_plan", {}).get("text_mode"),
-            }
-            for item in route.get("candidates", [])
-            if isinstance(item, dict)
-        ],
+        "direction_mode": route.get("direction_mode"),
+        "direction_count_requested": route.get("direction_count_requested"),
+        "content_contract": route.get("content_contract"),
+        "content_load": route.get("content_load"),
+        "candidates": route.get("candidates", []),
+        "recommendations": route.get("recommendations", {}),
     }
-    serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+    return canonical_json_sha256(payload)
 
 
 def build_selection_record(
@@ -1588,6 +2067,8 @@ def build_selection_record(
     return {
         "schema_version": SCHEMA_VERSION,
         "job_id": route.get("job_id"),
+        "skill_ref": route.get("skill_ref"),
+        "manifest_digest": route.get("manifest_digest"),
         "selected_at": utc_now(),
         "selected_by": selected_by,
         "route_fingerprint": current_fingerprint,
@@ -1620,6 +2101,10 @@ def validate_selection_record(
         raise RecomposerError("Selection record has an invalid workflow transition")
     if selection.get("job_id") != route.get("job_id"):
         raise RecomposerError("Selection job_id does not match the route")
+    if selection.get("skill_ref") != route.get("skill_ref"):
+        raise RecomposerError("Selection Skill Pack reference does not match the route")
+    if selection.get("manifest_digest") != route.get("manifest_digest"):
+        raise RecomposerError("Selection source manifest digest does not match the route")
     if selection.get("route_fingerprint") != route_fingerprint(route):
         raise RecomposerError("Selection record does not match this route fingerprint")
     strategy_id = selection.get("selected_strategy_id")
@@ -1671,6 +2156,7 @@ def build_route_decision(
                 "reading_path": strategy["reading_path"],
                 "changed_axes": strategy["changed_axes"],
                 "prompt_hints": strategy.get("prompt_hints", []),
+                "capacity_check": assess_strategy_capacity(strategy, manifest),
                 "reasons": reasons,
                 "risks": risks,
             }
@@ -1707,6 +2193,12 @@ def build_route_decision(
     )
     route = {
         "schema_version": SCHEMA_VERSION,
+        "skill_ref": skill_pack_ref(),
+        "manifest_digest": canonical_json_sha256(manifest),
+        "catalog_ref": {
+            "version": catalog["catalog_version"],
+            "content_digest": canonical_json_sha256(catalog),
+        },
         "job_id": manifest["job_id"],
         "generated_at": utc_now(),
         "workflow_state": "AWAITING_HUMAN_SELECTION",
@@ -1721,6 +2213,8 @@ def build_route_decision(
         ),
         "direction_mode": direction_mode,
         "direction_count_requested": requested_count,
+        "content_contract": manifest["content"]["contract"],
+        "content_load": measure_content_load(manifest),
         "candidates": [dict(candidate, rank=index) for index, candidate in enumerate(shortlist, start=1)],
         "recommendations": recommendations,
         "asset_readiness_summary": asset_plan["summary"],
@@ -1743,6 +2237,24 @@ def build_route_decision(
     }
     route["route_fingerprint"] = route_fingerprint(route)
     return route
+
+
+def validate_route_provenance(
+    manifest: Dict[str, Any], route: Dict[str, Any], catalog: Dict[str, Any]
+) -> None:
+    """Reject compilation when any routed input or Skill component changed."""
+    if route.get("skill_ref") != skill_pack_ref():
+        raise RecomposerError("Route Skill Pack reference is stale; rebuild the direction board")
+    if route.get("manifest_digest") != canonical_json_sha256(manifest):
+        raise RecomposerError("Route source manifest digest is stale; rebuild the direction board")
+    expected_catalog_ref = {
+        "version": catalog.get("catalog_version"),
+        "content_digest": canonical_json_sha256(catalog),
+    }
+    if route.get("catalog_ref") != expected_catalog_ref:
+        raise RecomposerError("Route strategy catalog reference is stale; rebuild the direction board")
+    if route.get("route_fingerprint") != route_fingerprint(route):
+        raise RecomposerError("Route fingerprint is missing or stale; rebuild the direction board")
 
 
 def _find_strategy(catalog: Dict[str, Any], strategy_id: str) -> Dict[str, Any]:
@@ -1783,6 +2295,7 @@ def build_content_graph(manifest: Dict[str, Any]) -> Dict[str, Any]:
             "object_type": item.get("type", "object"),
             "label": item.get("label", item.get("id")),
             "preserve": item.get("preserve"),
+            "cardinality": _node_cardinality(item),
             "verified": item.get("verified", False),
             "source_bbox": item.get("bbox"),
         }
@@ -1800,6 +2313,7 @@ def build_content_graph(manifest: Dict[str, Any]) -> Dict[str, Any]:
             "text": block.get("text"),
             "importance": block.get("importance"),
             "exact": block.get("id") in required_ids,
+            "cardinality": _node_cardinality(block),
             "verified": block.get("verified", False),
             "source_bbox": block.get("bbox"),
         }
@@ -1834,6 +2348,8 @@ def build_content_graph(manifest: Dict[str, Any]) -> Dict[str, Any]:
         "outcome_contract": manifest.get("intent", {}).get(
             "outcome_contract", "audited_content"
         ),
+        "content_contract": manifest.get("content", {}).get("contract", {}),
+        "content_load": measure_content_load(manifest),
         "nodes": {"objects": object_nodes, "text_blocks": text_nodes},
         "groups": groups,
         "ungrouped_refs": sorted(all_refs - grouped_refs),
@@ -1964,6 +2480,9 @@ def build_layout_spec(
         "renderer": renderer,
         "composition_mode": composition_modes[renderer],
         "outcome_contract": outcome_contract,
+        "content_contract": manifest["content"]["contract"],
+        "content_load": measure_content_load(manifest),
+        "selected_lane_capacity": selected_candidate.get("capacity_check", {}),
         "fidelity_claim": fidelity_claim,
         "model_authority": authority,
         "canvas": {
@@ -2011,7 +2530,10 @@ def build_layout_spec(
             "mode": manifest.get("render", {}).get(
                 "iteration_mode", "edit_latest_result"
             ),
-            "max_targeted_repairs": 2,
+            "automatic_retries": 0,
+            "maximum_human_authorized_followup_calls": MAX_HUMAN_AUTHORIZED_FOLLOWUP_CALLS,
+            "each_external_call_requires_new_human_authorization": True,
+            "returned_artifact_must_be_presented_before_or_alongside_qa": True,
             "regenerate_only_when": (
                 "the composition kernel fails or repair would require moving several content groups"
             ),
@@ -2032,6 +2554,7 @@ def build_production_layer_spec(
             "text": block["text"],
             "kind": block.get("kind", "copy"),
             "importance": block["importance"],
+            "cardinality": _node_cardinality(block),
             "source_bbox": block.get("bbox"),
             "exact": block["id"] in required_ids,
             "placement": (
@@ -2051,6 +2574,9 @@ def build_production_layer_spec(
         "renderer": layout_spec["renderer"],
         "composition_mode": layout_spec["composition_mode"],
         "coordinate_status": layout_spec["coordinate_status"],
+        "content_contract": layout_spec["content_contract"],
+        "content_load": layout_spec["content_load"],
+        "selected_lane_capacity": layout_spec["selected_lane_capacity"],
         "text_blocks": verified_text,
         "prepared_assets": asset_plan["items"],
         "group_bindings": build_content_graph(manifest)["groups"],
@@ -2063,6 +2589,13 @@ def build_production_layer_spec(
             "place exact copy within the same surface or flow grammar as its product",
             "prevent overflow, collisions, haloing, color spill, and detached-caption behavior",
             "use cards or source frames only when the plan explicitly marks a fallback",
+        ],
+        "acceptance_invariants": [
+            "required visible text is a subset of observed visible text",
+            "observed visible text is a subset of the declared whitelist",
+            "every declared text and object cardinality matches exactly",
+            "every comparison group matches its declared object and text-kind schema",
+            "visual approval cannot override a failed text, count, or association check",
         ],
         "fallback_policy": layout_spec["degraded_asset_fallback"],
     }
@@ -2095,6 +2628,14 @@ def compile_prompt(
     embedding = layout_spec["embedding_grammar"]
     avoid = manifest["preservation"]["source_features_to_avoid"]
     forbidden_inference = manifest["preservation"]["forbidden_inference"]
+    content_contract = manifest["content"]["contract"]
+    allowed_ids = set(content_contract.get("allowed_visible_text_ids", []))
+    required_ids = set(manifest["preservation"]["must_preserve_text_ids"])
+    allowed_text = [
+        block
+        for block in manifest["content"]["text_blocks"]
+        if block.get("id") in allowed_ids
+    ]
     object_labels = [
         item.get("label", item.get("id"))
         for item in manifest["content"]["objects"]
@@ -2142,6 +2683,45 @@ def compile_prompt(
     ]
     if object_labels:
         lines.append("Subject: " + "; ".join(str(label) for label in object_labels))
+    lines.extend(
+        [
+            "",
+            "# Immutable content budget",
+            "",
+            (
+                f"Content world: {content_contract.get('mode')}; unknown-value policy: "
+                f"{content_contract.get('unknown_policy')}; required item count: "
+                f"{content_contract.get('required_item_count')}."
+            ),
+            (
+                "Hard invariant: required visible text must be a subset of observed visible text; "
+                "observed visible text must be a subset of this whitelist; every declared cardinality "
+                "and group schema must match exactly. Do not delete, summarize, merge, split, duplicate, "
+                "paraphrase, translate, or invent content to improve the composition."
+            ),
+            "Visible-text whitelist (one independent visible region per declared occurrence):",
+        ]
+    )
+    for block in allowed_text:
+        requirement = "REQUIRED EXACT" if block.get("id") in required_ids else "ALLOWED"
+        lines.append(
+            f'- [{requirement}] id={block.get("id")} cardinality={_node_cardinality(block)} '
+            f'text="{block.get("text", "")}"'
+        )
+    lines.append("Required object inventory:")
+    for item in manifest["content"]["objects"]:
+        lines.append(
+            f"- id={item.get('id')} type={item.get('type', 'object')} "
+            f"cardinality={_node_cardinality(item)} label={item.get('label', item.get('id'))}"
+        )
+    if content_contract.get("group_schemas"):
+        lines.append("Mandatory group schemas:")
+        for schema in content_contract["group_schemas"]:
+            lines.append(
+                f"- role={schema.get('role')} required_count={schema.get('required_count')} "
+                f"object_types={schema.get('required_object_types', {})} "
+                f"text_kinds={schema.get('required_text_kinds', {})}"
+            )
     lines.append("Structural directions:")
     lines.extend(f"- {hint}" for hint in visual.get("structural_prompt_hints", []))
     lines.append("Visual-system directions:")
@@ -2159,12 +2739,12 @@ def compile_prompt(
         for member in group["resolved_members"]:
             if member["node_type"] == "object":
                 member_descriptions.append(
-                    f"object {member.get('label', member.get('id'))}"
+                    f"object {member.get('label', member.get('id'))} x{member.get('cardinality', 1)}"
                 )
             else:
                 exact_label = "exact text" if member.get("exact") else "text"
                 member_descriptions.append(
-                    f'{exact_label} "{member.get("text", "")}"'
+                    f'{exact_label} "{member.get("text", "")}" x{member.get("cardinality", 1)}'
                 )
         lines.append(
             f"- Node {group['sequence']} [{group['id']}]: "
@@ -2291,8 +2871,10 @@ def compile_prompt(
                 "After rendering, audit every exact text node, object count, and group association.",
                 (
                     "For a local defect, edit the latest result and correct only that defect while "
-                    "preserving the successful composition. Allow at most two targeted repairs before "
-                    "escalating copy or protected content to a deterministic production pass."
+                    "preserving the successful composition. Never retry automatically: each additional "
+                    "image-model call requires a fresh explicit human authorization. Permit at most two "
+                    "human-authorized follow-up calls before escalating copy or protected content to a "
+                    "deterministic production pass."
                 ),
             ]
         )
@@ -2343,6 +2925,12 @@ def compile_retry_guide(
                     "Do not retreat to an opaque rectangle, detached caption, generic card, or empty "
                     "background plus overlay when repairing integration."
                 ),
+                (
+                    "Never start a repair automatically. Each additional image-model call requires a "
+                    "fresh explicit human authorization and may cover exactly one call. Permit at most "
+                    "two human-authorized follow-up calls; then repair deterministically or report the "
+                    "blocker without relaxing the closed content contract."
+                ),
             ]
         )
         return "\n".join(lines) + "\n"
@@ -2356,10 +2944,369 @@ def compile_retry_guide(
             "- Move one colliding node locally without reverting to a grid.",
             "- Correct one product-to-value association without changing the rest of the poster.",
             "",
-            "Stop after two targeted model repairs. Escalate to hybrid or deterministic production when exact text, microcopy, or protected pixels still fail.",
+            "Never retry automatically. Show every returned artifact even when it fails QA. Each repair requires a fresh explicit human authorization for exactly one external call.",
+            "Permit at most two human-authorized follow-up calls. Then escalate to hybrid or deterministic production when exact text, microcopy, or protected pixels still fail.",
         ]
     )
     return "\n".join(lines) + "\n"
+
+
+def _render_boundary_payload(boundary: Dict[str, Any]) -> Dict[str, Any]:
+    """Return the immutable part of a render boundary for fingerprinting."""
+    return {
+        "skill_ref": boundary.get("skill_ref"),
+        "job_id": boundary.get("job_id"),
+        "workflow_state": boundary.get("workflow_state"),
+        "bindings": boundary.get("bindings"),
+        "authorization_policy": boundary.get("authorization_policy"),
+        "returned_artifact_policy": boundary.get("returned_artifact_policy"),
+        "provider_boundary": boundary.get("provider_boundary"),
+    }
+
+
+def render_boundary_fingerprint(boundary: Dict[str, Any]) -> str:
+    return canonical_json_sha256(_render_boundary_payload(boundary))
+
+
+def validate_render_boundary(boundary: Dict[str, Any]) -> None:
+    if not isinstance(boundary, dict):
+        raise RecomposerError("Render boundary must be a JSON object")
+    if boundary.get("workflow_state") != "AWAITING_RENDER_AUTHORIZATION":
+        raise RecomposerError(
+            "Render boundary is not at the pre-call authorization checkpoint"
+        )
+    if boundary.get("contract_fingerprint") != render_boundary_fingerprint(boundary):
+        raise RecomposerError("Render boundary fingerprint is missing or stale; recompile")
+    policy = boundary.get("authorization_policy")
+    if not isinstance(policy, dict):
+        raise RecomposerError("Render boundary has no authorization policy")
+    if policy.get("maximum_external_calls_per_authorization") != 1:
+        raise RecomposerError("Each render authorization must cover exactly one external call")
+    if policy.get("automatic_retries") != 0:
+        raise RecomposerError("Automatic render retries must remain disabled")
+    if policy.get("direction_selection_is_render_authorization") is not False:
+        raise RecomposerError("Direction selection cannot double as render authorization")
+    artifact_policy = boundary.get("returned_artifact_policy")
+    if not isinstance(artifact_policy, dict):
+        raise RecomposerError("Render boundary has no returned-artifact policy")
+    if artifact_policy.get("presentation_required") is not True:
+        raise RecomposerError("Returned render artifacts must be presented to the human")
+    if artifact_policy.get("qa_may_suppress_artifact") is not False:
+        raise RecomposerError("QA may label a returned artifact but may not suppress it")
+
+
+def build_render_boundary(
+    manifest: Dict[str, Any],
+    route: Dict[str, Any],
+    layout_spec: Dict[str, Any],
+    prompt: str,
+) -> Dict[str, Any]:
+    """Create a pre-call checkpoint without invoking an image provider."""
+    bindings = {
+        "manifest_digest": canonical_json_sha256(manifest),
+        "route_fingerprint": route.get("route_fingerprint"),
+        "selected_strategy_id": layout_spec.get("strategy", {}).get("id"),
+        "renderer": layout_spec.get("renderer"),
+        "reconstruction_plan_digest": canonical_json_sha256(layout_spec),
+        "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+    }
+    boundary: Dict[str, Any] = {
+        "schema_version": SCHEMA_VERSION,
+        "policy_version": POLICY_VERSION,
+        "skill_ref": route.get("skill_ref"),
+        "job_id": manifest.get("job_id"),
+        "generated_at": utc_now(),
+        "workflow_state": "AWAITING_RENDER_AUTHORIZATION",
+        "external_call_started": False,
+        "authorized_external_calls": 0,
+        "bindings": bindings,
+        "authorization_policy": {
+            "human_checkpoint": "required_before_every_external_image_request",
+            "authorization_unit": "exactly_one_external_image_request",
+            "maximum_external_calls_per_authorization": 1,
+            "automatic_retries": 0,
+            "maximum_human_authorized_followup_calls": MAX_HUMAN_AUTHORIZED_FOLLOWUP_CALLS,
+            "direction_selection_is_render_authorization": False,
+            "contract_change_invalidates_authorization": True,
+        },
+        "returned_artifact_policy": {
+            "presentation_required": True,
+            "presentation_timing": "immediately_after_provider_return_before_or_alongside_qa",
+            "qa_may_suppress_artifact": False,
+            "qa_failure_labels_artifact_only": True,
+            "provider_failure_without_artifact_must_be_reported": True,
+        },
+        "provider_boundary": {
+            "skill_invokes_provider": False,
+            "skill_can_cancel_in_flight_request": False,
+            "skill_controls_provider_billing_or_refunds": False,
+            "pre_call_gate_only": True,
+            "meaning": (
+                "This contract can withhold an unauthorized call before invocation. It cannot cancel "
+                "an in-flight provider request, guarantee provider output, or hide a returned artifact."
+            ),
+        },
+    }
+    boundary["contract_fingerprint"] = render_boundary_fingerprint(boundary)
+    validate_render_boundary(boundary)
+    return boundary
+
+
+def _new_render_ledger(boundary: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "policy_version": POLICY_VERSION,
+        "job_id": boundary.get("job_id"),
+        "boundary_fingerprint": boundary.get("contract_fingerprint"),
+        "workflow_state": "AWAITING_RENDER_AUTHORIZATION",
+        "attempts": [],
+        "automatic_retries": 0,
+    }
+
+
+def validate_render_ledger(
+    boundary: Dict[str, Any], ledger: Optional[Dict[str, Any]]
+) -> Dict[str, Any]:
+    validate_render_boundary(boundary)
+    if ledger is None:
+        return _new_render_ledger(boundary)
+    if not isinstance(ledger, dict):
+        raise RecomposerError("Render ledger must be a JSON object")
+    if ledger.get("job_id") != boundary.get("job_id"):
+        raise RecomposerError("Render ledger job_id does not match the render boundary")
+    if ledger.get("boundary_fingerprint") != boundary.get("contract_fingerprint"):
+        raise RecomposerError("Render ledger is bound to a different or stale contract")
+    if ledger.get("automatic_retries") != 0:
+        raise RecomposerError("Render ledger cannot enable automatic retries")
+    attempts = ledger.get("attempts")
+    if not isinstance(attempts, list) or any(not isinstance(item, dict) for item in attempts):
+        raise RecomposerError("Render ledger attempts must be an array of objects")
+    authorization_ids = [item.get("authorization_id") for item in attempts]
+    if any(not isinstance(item, str) or not item for item in authorization_ids):
+        raise RecomposerError("Every render attempt requires an authorization_id")
+    if len(authorization_ids) != len(set(authorization_ids)):
+        raise RecomposerError("Render ledger contains a reused authorization")
+    active = [item for item in attempts if item.get("status") == "authorized_not_started"]
+    if len(active) > 1:
+        raise RecomposerError("Render ledger contains more than one active authorization")
+    return ledger
+
+
+def build_render_authorization(
+    boundary: Dict[str, Any],
+    *,
+    attempt_kind: str,
+    rationale: str,
+    ledger: Optional[Dict[str, Any]] = None,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Reserve one explicit human-authorized provider call in the local ledger."""
+    if attempt_kind not in RENDER_ATTEMPT_KINDS:
+        raise RecomposerError(
+            f"attempt_kind must be one of {sorted(RENDER_ATTEMPT_KINDS)}"
+        )
+    if not isinstance(rationale, str):
+        raise RecomposerError(
+            "Render authorization requires the explicit human instruction or rationale"
+        )
+    human_rationale = rationale.strip()
+    if not human_rationale:
+        raise RecomposerError(
+            "Render authorization requires the explicit human instruction or rationale"
+        )
+    current = validate_render_ledger(boundary, ledger)
+    attempts = current["attempts"]
+    if any(item.get("status") == "authorized_not_started" for item in attempts):
+        raise RecomposerError(
+            "An unused render authorization already exists; record or cancel it before authorizing another call"
+        )
+    completed = [
+        item for item in attempts if item.get("status") != "authorized_not_started"
+    ]
+    started = [item for item in completed if item.get("external_call_started") is True]
+    latest = completed[-1] if completed else None
+    if attempt_kind == "initial" and started:
+        raise RecomposerError(
+            "An initial provider call has already started; use an explicitly authorized follow-up kind"
+        )
+    if attempt_kind == "targeted_repair" and (
+        latest is None or latest.get("status") != "returned"
+    ):
+        raise RecomposerError(
+            "targeted_repair requires a previously returned artifact in this ledger"
+        )
+    if attempt_kind == "provider_retry" and (
+        latest is None or latest.get("status") != "provider_failure"
+    ):
+        raise RecomposerError(
+            "provider_retry requires a recorded provider failure in this ledger"
+        )
+    followup_count = sum(
+        1
+        for item in completed
+        if item.get("attempt_kind") in {"targeted_repair", "provider_retry"}
+        and item.get("status") != "cancelled_before_call"
+    )
+    if attempt_kind != "initial" and followup_count >= MAX_HUMAN_AUTHORIZED_FOLLOWUP_CALLS:
+        raise RecomposerError(
+            "The two-call human-authorized follow-up ceiling has been reached; switch renderer or report the blocker"
+        )
+
+    authorization_id = f"render-auth-{uuid.uuid4()}"
+    authorization = {
+        "schema_version": SCHEMA_VERSION,
+        "policy_version": POLICY_VERSION,
+        "job_id": boundary.get("job_id"),
+        "authorization_id": authorization_id,
+        "authorized_at": utc_now(),
+        "authorized_by": "human",
+        "human_instruction_or_rationale": human_rationale,
+        "attempt_kind": attempt_kind,
+        "maximum_external_calls": 1,
+        "automatic_retry": False,
+        "boundary_fingerprint": boundary.get("contract_fingerprint"),
+        "bindings": boundary.get("bindings"),
+        "workflow_transition": {
+            "from": current.get("workflow_state"),
+            "to": "RENDER_CALL_AUTHORIZED",
+        },
+        "provider_notice": (
+            "This record authorizes one call but does not invoke, cancel, bill, refund, or guarantee "
+            "the external image provider."
+        ),
+    }
+    reservation = {
+        "authorization_id": authorization_id,
+        "attempt_kind": attempt_kind,
+        "authorized_at": authorization["authorized_at"],
+        "status": "authorized_not_started",
+        "external_call_started": False,
+        "authorization_consumed": False,
+    }
+    updated = dict(current)
+    updated["workflow_state"] = "RENDER_CALL_AUTHORIZED"
+    updated["attempts"] = [dict(item) for item in attempts] + [reservation]
+    return authorization, updated
+
+
+def validate_render_authorization(
+    boundary: Dict[str, Any], authorization: Dict[str, Any]
+) -> None:
+    validate_render_boundary(boundary)
+    if not isinstance(authorization, dict):
+        raise RecomposerError("Render authorization must be a JSON object")
+    if authorization.get("job_id") != boundary.get("job_id"):
+        raise RecomposerError("Render authorization job_id does not match the boundary")
+    if authorization.get("boundary_fingerprint") != boundary.get("contract_fingerprint"):
+        raise RecomposerError("Render authorization is bound to a different or stale contract")
+    if authorization.get("bindings") != boundary.get("bindings"):
+        raise RecomposerError("Render authorization artifact bindings are stale")
+    if authorization.get("authorized_by") != "human":
+        raise RecomposerError("Only an explicit human authorization is valid")
+    if authorization.get("maximum_external_calls") != 1:
+        raise RecomposerError("Render authorization must cover exactly one external call")
+    if authorization.get("automatic_retry") is not False:
+        raise RecomposerError("Render authorization cannot enable automatic retry")
+    if authorization.get("attempt_kind") not in RENDER_ATTEMPT_KINDS:
+        raise RecomposerError("Render authorization has an invalid attempt kind")
+    if (
+        not isinstance(authorization.get("authorization_id"), str)
+        or not authorization["authorization_id"]
+    ):
+        raise RecomposerError("Render authorization requires authorization_id")
+
+
+def record_render_attempt(
+    boundary: Dict[str, Any],
+    authorization: Dict[str, Any],
+    ledger: Dict[str, Any],
+    *,
+    provider_status: str,
+    result_image: Optional[Path] = None,
+    provider_message: str = "",
+) -> Dict[str, Any]:
+    """Close a one-use authorization and preserve any returned artifact for display."""
+    if provider_status not in RENDER_PROVIDER_STATUSES:
+        raise RecomposerError(
+            f"provider_status must be one of {sorted(RENDER_PROVIDER_STATUSES)}"
+        )
+    validate_render_authorization(boundary, authorization)
+    current = validate_render_ledger(boundary, ledger)
+    authorization_id = authorization["authorization_id"]
+    matching = [
+        (index, item)
+        for index, item in enumerate(current["attempts"])
+        if item.get("authorization_id") == authorization_id
+    ]
+    if len(matching) != 1:
+        raise RecomposerError(
+            "Render authorization is not reserved exactly once in this ledger"
+        )
+    index, reservation = matching[0]
+    if reservation.get("status") != "authorized_not_started":
+        raise RecomposerError("Render authorization was already consumed or closed")
+
+    artifact: Optional[Dict[str, Any]] = None
+    if provider_status == "returned":
+        if result_image is None:
+            raise RecomposerError("A returned provider status requires --result-image")
+        resolved_image = result_image.expanduser().resolve()
+        if not resolved_image.is_file():
+            raise RecomposerError(f"Returned result image does not exist: {resolved_image}")
+        artifact = {
+            "path": str(resolved_image),
+            "sha256": sha256_file(resolved_image),
+            "bytes": resolved_image.stat().st_size,
+            "presentation_required": True,
+            "presentation_status": "pending_human_display",
+            "qa_may_suppress_artifact": False,
+        }
+    elif result_image is not None:
+        raise RecomposerError(
+            "Only provider_status=returned may include a result image"
+        )
+
+    external_call_started = provider_status != "cancelled_before_call"
+    closed = dict(reservation)
+    closed.update(
+        {
+            "recorded_at": utc_now(),
+            "status": provider_status,
+            "external_call_started": external_call_started,
+            "authorization_consumed": True,
+            "paid_call_may_have_been_consumed": external_call_started,
+            "provider_billing_status": (
+                "outside_skill_unknown"
+                if external_call_started
+                else "no_external_call_recorded"
+            ),
+            "provider_message": provider_message.strip(),
+            "result_artifact": artifact,
+            "retry_automatically_started": False,
+        }
+    )
+    attempts = [dict(item) for item in current["attempts"]]
+    attempts[index] = closed
+    updated = dict(current)
+    updated["attempts"] = attempts
+    if provider_status == "returned":
+        updated["workflow_state"] = "ARTIFACT_RETURNED_DISPLAY_REQUIRED"
+        updated["next_action"] = (
+            "Present the returned artifact to the human immediately; then run QA. A failed QA result "
+            "may label the artifact but must not hide it."
+        )
+    elif provider_status == "provider_failure":
+        updated["workflow_state"] = "PROVIDER_FAILURE_REAUTHORIZATION_REQUIRED"
+        updated["next_action"] = (
+            "Report the provider failure and billing uncertainty. Do not retry unless the human "
+            "explicitly authorizes one new provider_retry call."
+        )
+    else:
+        updated["workflow_state"] = "AWAITING_RENDER_AUTHORIZATION"
+        updated["next_action"] = (
+            "No external call was recorded. The authorization is closed; obtain a new explicit "
+            "human authorization before any future call."
+        )
+    return updated
 
 
 def compile_direction_board(route: Dict[str, Any]) -> str:
@@ -2372,6 +3319,12 @@ def compile_direction_board(route: Dict[str, Any]) -> str:
         f"Mode: {route.get('direction_mode', 'focused')}",
         f"Renderer: {route.get('renderer', 'unknown')}",
         f"Route fingerprint: `{route.get('route_fingerprint', 'unknown')}`",
+        (
+            "Closed content load: "
+            f"{route.get('content_load', {}).get('required_text_node_count', 0)} required text nodes / "
+            f"{route.get('content_load', {}).get('required_text_char_count', 0)} characters / "
+            f"{route.get('content_load', {}).get('group_count', 0)} groups."
+        ),
         (
             "Human checkpoint: compare structural difference, information capacity, embedding grammar, "
             "and fidelity risk. Select exactly one lane; recommendation labels are decision aids and never "
@@ -2391,6 +3344,7 @@ def compile_direction_board(route: Dict[str, Any]) -> str:
         visual = candidate.get("visual_system", {})
         embedding = candidate.get("embedding_plan", {})
         scores = candidate.get("decision_scores", {})
+        capacity = candidate.get("capacity_check", {})
         lines.extend(
             [
                 f"## Lane {candidate.get('rank', '?')}: {candidate.get('title', candidate.get('id', 'unknown'))}",
@@ -2407,6 +3361,12 @@ def compile_direction_board(route: Dict[str, Any]) -> str:
                 f"- Text embedding: `{embedding.get('text_mode', 'unknown')}`",
                 f"- Asset gate: `{embedding.get('asset_requirement', 'unknown')}`",
                 f"- Text capacity: `{candidate.get('text_capacity', 'unknown')}`",
+                (
+                    "- Capacity gate: "
+                    f"`{capacity.get('status', 'unknown')}`; peak utilization "
+                    f"{capacity.get('max_utilization', 'unknown')}; margins "
+                    f"{capacity.get('margins', {})}"
+                ),
                 f"- Production risk: `{candidate.get('production_risk', 'unknown')}`",
                 (
                     "- Decision scores: "
@@ -2438,11 +3398,13 @@ def write_compiled_artifacts(
     validation = validate_manifest(manifest)
     if not validation["valid"]:
         raise RecomposerError("Manifest validation failed:\n- " + "\n- ".join(validation["errors"]))
+    validate_route_provenance(manifest, route, catalog)
     layout_spec = build_layout_spec(manifest, route, catalog, selection)
     content_graph = build_content_graph(manifest)
     asset_plan = build_asset_preparation_plan(manifest, layout_spec["renderer"])
     production_layers = build_production_layer_spec(manifest, layout_spec, asset_plan)
     prompt = compile_prompt(manifest, route, layout_spec)
+    render_boundary = build_render_boundary(manifest, route, layout_spec, prompt)
     retry_guide = compile_retry_guide(manifest, route, layout_spec)
     direction_board = compile_direction_board(route)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -2452,6 +3414,7 @@ def write_compiled_artifacts(
     plan_path = out_dir / "reconstruction-plan.json"
     production_path = out_dir / "production-layer-spec.json"
     prompt_path = out_dir / "final-prompt.md"
+    boundary_path = out_dir / "render-boundary.json"
     retry_path = out_dir / "retry-guide.md"
     board_path = out_dir / "direction-board.md"
     write_json(selection, selection_path)
@@ -2459,6 +3422,7 @@ def write_compiled_artifacts(
     write_json(asset_plan, asset_path)
     write_json(layout_spec, plan_path)
     write_json(production_layers, production_path)
+    write_json(render_boundary, boundary_path)
     with prompt_path.open("w", encoding="utf-8") as handle:
         handle.write(prompt)
     with retry_path.open("w", encoding="utf-8") as handle:
@@ -2472,6 +3436,7 @@ def write_compiled_artifacts(
         "plan": plan_path,
         "production_layers": production_path,
         "prompt": prompt_path,
+        "render_boundary": boundary_path,
         "retry": retry_path,
         "direction_board": board_path,
     }
@@ -2483,23 +3448,409 @@ def normalize_exact_text(value: str) -> str:
 
 
 def compare_required_text(manifest: Dict[str, Any], observed_text: str) -> Dict[str, Any]:
-    normalized_observed = normalize_exact_text(observed_text)
-    expected = _required_text_blocks(manifest)
-    matches: List[Dict[str, Any]] = []
+    """Compare independently segmented OCR regions in both directions.
+
+    Each non-empty line is treated as one visible text region. For association
+    checks use ``compare_structured_observations`` instead of this flat fallback.
+    """
+    content = manifest.get("content", {})
+    contract = content.get("contract", {})
+    required = _required_text_blocks(manifest)
+    allowed_ids = set(contract.get("allowed_visible_text_ids", []))
+    allowed = [
+        block
+        for block in content.get("text_blocks", [])
+        if isinstance(block, dict) and block.get("id") in allowed_ids
+    ]
+    expected_counts: Counter[str] = Counter()
+    allowed_counts: Counter[str] = Counter()
+    literal_metadata: Dict[str, Dict[str, Any]] = defaultdict(
+        lambda: {"ids": [], "texts": []}
+    )
+    for block in required:
+        normalized = normalize_exact_text(str(block.get("text", "")))
+        expected_counts[normalized] += _node_cardinality(block)
+        literal_metadata[normalized]["ids"].append(block.get("id"))
+        literal_metadata[normalized]["texts"].append(block.get("text"))
+    for block in allowed:
+        normalized = normalize_exact_text(str(block.get("text", "")))
+        allowed_counts[normalized] += _node_cardinality(block)
+        literal_metadata[normalized]["ids"].append(block.get("id"))
+        literal_metadata[normalized]["texts"].append(block.get("text"))
+
+    observed_units = [line.strip() for line in observed_text.splitlines() if line.strip()]
+    observed_counts = Counter(normalize_exact_text(line) for line in observed_units)
     missing: List[Dict[str, Any]] = []
-    for block in expected:
-        item = {"id": block["id"], "text": block["text"]}
-        if normalize_exact_text(block["text"]) in normalized_observed:
-            matches.append(item)
+    matched: List[Dict[str, Any]] = []
+    for literal, expected_count in expected_counts.items():
+        observed_count = observed_counts.get(literal, 0)
+        metadata = literal_metadata[literal]
+        record = {
+            "ids": sorted(set(metadata["ids"])),
+            "text": metadata["texts"][0] if metadata["texts"] else "",
+            "expected_count": expected_count,
+            "observed_count": observed_count,
+        }
+        if observed_count >= expected_count:
+            matched.append(record)
         else:
-            missing.append(item)
+            record["missing_count"] = expected_count - observed_count
+            missing.append(record)
+
+    undeclared: List[Dict[str, Any]] = []
+    duplicate_overages: List[Dict[str, Any]] = []
+    for literal, observed_count in observed_counts.items():
+        allowed_count = allowed_counts.get(literal, 0)
+        sample = next(
+            (line for line in observed_units if normalize_exact_text(line) == literal),
+            literal,
+        )
+        if allowed_count == 0:
+            undeclared.append({"text": sample, "observed_count": observed_count})
+        elif observed_count > allowed_count:
+            duplicate_overages.append(
+                {
+                    "text": sample,
+                    "allowed_count": allowed_count,
+                    "observed_count": observed_count,
+                    "extra_count": observed_count - allowed_count,
+                }
+            )
+    enforce_closed_world = (
+        contract.get("mode") == "closed_world"
+        and contract.get("forbid_undeclared_text") is True
+    )
+    passed = not missing and (
+        not enforce_closed_world or (not undeclared and not duplicate_overages)
+    )
     return {
         "evaluated": True,
-        "expected_count": len(expected),
-        "matched_count": len(matches),
-        "matched": matches,
+        "method": "line_segmented_bidirectional_text_diff",
+        "segmentation_contract": "one non-empty line equals one visible text region",
+        "closed_world_enforced": enforce_closed_world,
+        "expected_count": sum(expected_counts.values()),
+        "allowed_count": sum(allowed_counts.values()),
+        "observed_count": sum(observed_counts.values()),
+        "matched_count": sum(
+            min(expected_counts[literal], observed_counts.get(literal, 0))
+            for literal in expected_counts
+        ),
+        "matched": matched,
         "missing": missing,
-        "pass": not missing,
+        "undeclared": undeclared,
+        "duplicate_overages": duplicate_overages,
+        "pass": passed,
+    }
+
+
+def compare_structured_observations(
+    manifest: Dict[str, Any],
+    observations: Dict[str, Any],
+    min_confidence: float = 0.8,
+) -> Dict[str, Any]:
+    """Audit text, object counts, and group associations by stable node id."""
+    content = manifest.get("content", {})
+    contract = content.get("contract", {})
+    objects = {
+        item.get("id"): item
+        for item in content.get("objects", [])
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    }
+    text_blocks = {
+        item.get("id"): item
+        for item in content.get("text_blocks", [])
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    }
+    required_text_ids = set(
+        manifest.get("preservation", {}).get("must_preserve_text_ids", [])
+    )
+    allowed_text_ids = set(contract.get("allowed_visible_text_ids", []))
+    expected_group_by_ref: Dict[str, str] = {}
+    grouped_required_refs: set[str] = set()
+    group_records = [
+        item for item in content.get("groups", []) if isinstance(item, dict)
+    ]
+    for group in group_records:
+        group_id = group.get("id")
+        for ref in group.get("member_refs", []):
+            if isinstance(group_id, str):
+                expected_group_by_ref[ref] = group_id
+                grouped_required_refs.add(ref)
+
+    validation_errors: List[str] = []
+    text_regions_value = observations.get("text_regions") if isinstance(observations, dict) else None
+    object_regions_value = observations.get("object_regions") if isinstance(observations, dict) else None
+    if not isinstance(text_regions_value, list):
+        validation_errors.append("observations.text_regions must be a list")
+        text_regions: List[Any] = []
+    else:
+        text_regions = text_regions_value
+    if not isinstance(object_regions_value, list):
+        validation_errors.append("observations.object_regions must be a list")
+        object_regions: List[Any] = []
+    else:
+        object_regions = object_regions_value
+
+    observed_text_counts: Counter[str] = Counter()
+    observed_object_counts: Counter[str] = Counter()
+    correct_group_counts: Counter[Tuple[str, str]] = Counter()
+    text_mismatches: List[Dict[str, Any]] = []
+    unknown_text: List[Dict[str, Any]] = []
+    unknown_objects: List[Dict[str, Any]] = []
+    wrong_associations: List[Dict[str, Any]] = []
+    low_confidence: List[Dict[str, Any]] = []
+
+    for index, region in enumerate(text_regions):
+        if not isinstance(region, dict):
+            validation_errors.append(f"text_regions[{index}] must be an object")
+            continue
+        text_id = region.get("text_id")
+        text = region.get("text")
+        confidence = region.get("confidence", 1.0)
+        if not isinstance(text_id, str) or not text_id:
+            validation_errors.append(f"text_regions[{index}].text_id must be a non-empty string")
+            continue
+        if not isinstance(text, str) or not text.strip():
+            validation_errors.append(f"text_regions[{index}].text must be a non-empty string")
+            continue
+        if (
+            not isinstance(confidence, (int, float))
+            or isinstance(confidence, bool)
+            or not 0 <= confidence <= 1
+        ):
+            validation_errors.append(f"text_regions[{index}].confidence must be between 0 and 1")
+            continue
+        if region.get("bbox") is not None and not _is_bbox(region.get("bbox")):
+            validation_errors.append(f"text_regions[{index}].bbox must be normalized [x1,y1,x2,y2]")
+        if confidence < min_confidence:
+            low_confidence.append(
+                {"node_type": "text", "id": text_id, "confidence": confidence}
+            )
+        observed_text_counts[text_id] += 1
+        expected = text_blocks.get(text_id)
+        if expected is None or text_id not in allowed_text_ids:
+            unknown_text.append({"text_id": text_id, "text": text})
+            continue
+        if normalize_exact_text(text) != normalize_exact_text(str(expected.get("text", ""))):
+            text_mismatches.append(
+                {
+                    "text_id": text_id,
+                    "expected": expected.get("text"),
+                    "observed": text,
+                }
+            )
+        expected_group = expected_group_by_ref.get(text_id)
+        observed_group = region.get("group_id")
+        if expected_group is not None:
+            if observed_group != expected_group:
+                wrong_associations.append(
+                    {
+                        "node_type": "text",
+                        "id": text_id,
+                        "expected_group_id": expected_group,
+                        "observed_group_id": observed_group,
+                    }
+                )
+            else:
+                correct_group_counts[(expected_group, text_id)] += 1
+        elif observed_group not in {None, ""}:
+            wrong_associations.append(
+                {
+                    "node_type": "text",
+                    "id": text_id,
+                    "expected_group_id": None,
+                    "observed_group_id": observed_group,
+                }
+            )
+
+    for index, region in enumerate(object_regions):
+        if not isinstance(region, dict):
+            validation_errors.append(f"object_regions[{index}] must be an object")
+            continue
+        object_id = region.get("object_id")
+        confidence = region.get("confidence", 1.0)
+        if not isinstance(object_id, str) or not object_id:
+            validation_errors.append(f"object_regions[{index}].object_id must be a non-empty string")
+            continue
+        if (
+            not isinstance(confidence, (int, float))
+            or isinstance(confidence, bool)
+            or not 0 <= confidence <= 1
+        ):
+            validation_errors.append(f"object_regions[{index}].confidence must be between 0 and 1")
+            continue
+        if region.get("bbox") is not None and not _is_bbox(region.get("bbox")):
+            validation_errors.append(f"object_regions[{index}].bbox must be normalized [x1,y1,x2,y2]")
+        if confidence < min_confidence:
+            low_confidence.append(
+                {"node_type": "object", "id": object_id, "confidence": confidence}
+            )
+        observed_object_counts[object_id] += 1
+        if object_id not in objects:
+            unknown_objects.append({"object_id": object_id})
+            continue
+        expected_group = expected_group_by_ref.get(object_id)
+        observed_group = region.get("group_id")
+        if expected_group is not None:
+            if observed_group != expected_group:
+                wrong_associations.append(
+                    {
+                        "node_type": "object",
+                        "id": object_id,
+                        "expected_group_id": expected_group,
+                        "observed_group_id": observed_group,
+                    }
+                )
+            else:
+                correct_group_counts[(expected_group, object_id)] += 1
+        elif observed_group not in {None, ""}:
+            wrong_associations.append(
+                {
+                    "node_type": "object",
+                    "id": object_id,
+                    "expected_group_id": None,
+                    "observed_group_id": observed_group,
+                }
+            )
+
+    missing_text: List[Dict[str, Any]] = []
+    duplicate_text: List[Dict[str, Any]] = []
+    for text_id in sorted(required_text_ids):
+        expected_count = _node_cardinality(text_blocks.get(text_id, {}))
+        observed_count = observed_text_counts.get(text_id, 0)
+        if observed_count < expected_count:
+            missing_text.append(
+                {
+                    "text_id": text_id,
+                    "expected_count": expected_count,
+                    "observed_count": observed_count,
+                }
+            )
+    for text_id, observed_count in observed_text_counts.items():
+        allowed_count = _node_cardinality(text_blocks.get(text_id, {})) if text_id in allowed_text_ids else 0
+        if observed_count > allowed_count:
+            duplicate_text.append(
+                {
+                    "text_id": text_id,
+                    "allowed_count": allowed_count,
+                    "observed_count": observed_count,
+                }
+            )
+
+    missing_objects: List[Dict[str, Any]] = []
+    duplicate_objects: List[Dict[str, Any]] = []
+    for object_id, item in objects.items():
+        expected_count = _node_cardinality(item)
+        observed_count = observed_object_counts.get(object_id, 0)
+        if observed_count < expected_count:
+            missing_objects.append(
+                {
+                    "object_id": object_id,
+                    "expected_count": expected_count,
+                    "observed_count": observed_count,
+                }
+            )
+        elif observed_count > expected_count:
+            duplicate_objects.append(
+                {
+                    "object_id": object_id,
+                    "expected_count": expected_count,
+                    "observed_count": observed_count,
+                }
+            )
+
+    expected_item_count = contract.get("required_item_count")
+    observed_product_count = sum(
+        count
+        for object_id, count in observed_object_counts.items()
+        if objects.get(object_id, {}).get("type") == "product"
+    )
+    item_count_mismatch = None
+    if isinstance(expected_item_count, int) and not isinstance(expected_item_count, bool):
+        if observed_product_count != expected_item_count:
+            item_count_mismatch = {
+                "expected": expected_item_count,
+                "observed": observed_product_count,
+            }
+
+    incomplete_groups: List[Dict[str, Any]] = []
+    for group in group_records:
+        group_id = group.get("id")
+        missing_refs = []
+        for ref in group.get("member_refs", []):
+            node = objects.get(ref) or text_blocks.get(ref) or {}
+            expected_count = _node_cardinality(node)
+            if correct_group_counts.get((group_id, ref), 0) < expected_count:
+                missing_refs.append(ref)
+        if missing_refs:
+            incomplete_groups.append(
+                {"group_id": group_id, "missing_or_misbound_refs": missing_refs}
+            )
+
+    closed_world = contract.get("mode") == "closed_world"
+    text_failures = bool(
+        validation_errors
+        or missing_text
+        or text_mismatches
+        or (closed_world and (unknown_text or duplicate_text))
+    )
+    object_failures = bool(
+        validation_errors
+        or missing_objects
+        or duplicate_objects
+        or item_count_mismatch
+        or (closed_world and unknown_objects)
+    )
+    association_failures = bool(
+        validation_errors or wrong_associations or incomplete_groups
+    )
+    confidence_pending = bool(low_confidence)
+    exact_text_check = {
+        "evaluated": not validation_errors,
+        "method": "structured_node_id_and_exact_literal_diff",
+        "missing": missing_text,
+        "mismatched": text_mismatches,
+        "undeclared": unknown_text,
+        "duplicate_overages": duplicate_text,
+        "pass": False if text_failures else None if confidence_pending else True,
+    }
+    object_count_check = {
+        "evaluated": not validation_errors,
+        "expected_declared_count": sum(_node_cardinality(item) for item in objects.values()),
+        "expected_item_count": expected_item_count,
+        "observed_declared_count": sum(
+            count for object_id, count in observed_object_counts.items() if object_id in objects
+        ),
+        "observed_product_count": observed_product_count,
+        "item_count_mismatch": item_count_mismatch,
+        "missing": missing_objects,
+        "duplicates": duplicate_objects,
+        "undeclared": unknown_objects,
+        "pass": False if object_failures else None if confidence_pending else True,
+    }
+    association_check = {
+        "evaluated": not validation_errors,
+        "group_count": len(group_records),
+        "wrong_associations": wrong_associations,
+        "incomplete_groups": incomplete_groups,
+        "pass": False if association_failures else None if confidence_pending else True,
+        "method": "stable_node_id_to_group_id_binding",
+    }
+    hard_failure = text_failures or object_failures or association_failures
+    return {
+        "evaluated": not validation_errors,
+        "validation_errors": validation_errors,
+        "minimum_confidence": min_confidence,
+        "low_confidence": low_confidence,
+        "exact_text_check": exact_text_check,
+        "object_count_check": object_count_check,
+        "association_check": association_check,
+        "manual_checks": (
+            ["Review low-confidence node observations before accepting the result."]
+            if confidence_pending and not hard_failure
+            else []
+        ),
+        "pass": False if hard_failure else None if confidence_pending else True,
     }
 
 
@@ -2530,6 +3881,7 @@ def build_qa_report(
     result_image: Optional[Path] = None,
     observed_text: Optional[str] = None,
     observed_text_source: Optional[str] = None,
+    observations: Optional[Dict[str, Any]] = None,
     protected_pixels_verified: bool = False,
     visual_review_passed: bool = False,
     integration_review_passed: bool = False,
@@ -2552,13 +3904,20 @@ def build_qa_report(
             "aspect_class": classify_aspect(width, height),
             "dimension_engine": engine,
         }
-        if observed_text is None:
+        if observed_text is None and observations is None:
             ocr = run_tesseract(result_image, "auto")
             observed_text = ocr["plain_text"]
             observed_text_source = "automatic_tesseract"
             ocr_notes.extend(ocr["warnings"])
 
-    if observed_text is None:
+    structured_check: Optional[Dict[str, Any]] = None
+    if observations is not None:
+        structured_check = compare_structured_observations(manifest, observations)
+        text_check = dict(structured_check["exact_text_check"])
+        text_check["source"] = "structured_observations"
+        object_count_check = dict(structured_check["object_count_check"])
+        association_check = dict(structured_check["association_check"])
+    elif observed_text is None:
         text_check = {
             "evaluated": False,
             "pass": None,
@@ -2567,18 +3926,57 @@ def build_qa_report(
     else:
         text_check = compare_required_text(manifest, observed_text)
         text_check["source"] = observed_text_source or "provided"
-        if observed_text_source == "automatic_tesseract" and text_check["missing"]:
+        if observed_text_source == "automatic_tesseract" and text_check["pass"] is False:
             text_check["pass"] = None
-            text_check["reason"] = "Automatic OCR misses are candidates for manual review, not proof of absent text."
+            text_check["reason"] = (
+                "Automatic OCR differences are review candidates, not proof of missing, "
+                "duplicate, or undeclared visible text."
+            )
+
+    if observations is None:
+        declared_object_count = sum(
+            _node_cardinality(item)
+            for item in manifest.get("content", {}).get("objects", [])
+            if isinstance(item, dict)
+        )
+        object_count_check = {
+            "evaluated": declared_object_count == 0,
+            "expected_declared_count": declared_object_count,
+            "pass": True if declared_object_count == 0 else None,
+            "reason": (
+                None
+                if declared_object_count == 0
+                else "Stable-ID object observations are required to prove object completeness."
+            ),
+        }
+        content_groups = manifest.get("content", {}).get("groups", [])
+        group_count = len(content_groups) if isinstance(content_groups, list) else 0
+        association_check = {
+            "group_count": group_count,
+            "evaluated": group_count == 0,
+            "pass": True if group_count == 0 else None,
+            "method": None,
+            "reason": (
+                None
+                if group_count == 0
+                else "Stable-ID text/object observations with group_id are required to prove associations."
+            ),
+        }
 
     manual_checks: List[str] = []
     content_groups = manifest.get("content", {}).get("groups", [])
-    association_check = {
-        "group_count": len(content_groups) if isinstance(content_groups, list) else 0,
-        "evaluated": visual_review_passed,
-        "pass": True if visual_review_passed else None,
-        "method": "manual_visual_review" if visual_review_passed else None,
-    }
+    if structured_check is not None:
+        manual_checks.extend(structured_check.get("manual_checks", []))
+    else:
+        declared_objects = manifest.get("content", {}).get("objects", [])
+        if isinstance(declared_objects, list) and declared_objects:
+            manual_checks.append(
+                "Provide structured object observations with stable object_id values to prove exact object counts."
+            )
+        if isinstance(content_groups, list) and content_groups:
+            manual_checks.append(
+                "Provide structured text/object observations with group_id values to prove every declared association."
+            )
     integration_check = {
         "evaluated": integration_review_passed,
         "pass": True if integration_review_passed else None,
@@ -2593,9 +3991,9 @@ def build_qa_report(
     }
     if not protected_pixels_verified and manifest["preservation"]["protected_regions"]:
         manual_checks.append("Verify protected pixels against the source or compositing layers.")
-    if content_groups and not visual_review_passed:
+    if content_groups and association_check.get("pass") is not True:
         manual_checks.append(
-            "Verify that every product, name, value, and qualifier remains inside its declared content group."
+            "Resolve every product, name, value, and qualifier against its declared content group; visual approval alone cannot close this check."
         )
     if not integration_review_passed:
         manual_checks.extend(
@@ -2629,7 +4027,13 @@ def build_qa_report(
     if not layout_delta["pass"]:
         failures.append("Layout delta does not satisfy the requested transformation contract.")
     if text_check.get("pass") is False and text_check.get("source") != "automatic_tesseract":
-        failures.append("Independently provided result text is missing required exact copy.")
+        failures.append(
+            "Result text violates the closed content contract: required, exact, duplicate, or undeclared text differs."
+        )
+    if object_count_check.get("pass") is False:
+        failures.append("Result object inventory violates the declared count contract.")
+    if association_check.get("pass") is False:
+        failures.append("Result content nodes violate declared semantic group associations.")
     if result.get("provided") and result.get("aspect_class") != route.get("target_aspect"):
         failures.append(
             f"Result aspect class {result.get('aspect_class')} does not match target {route.get('target_aspect')}."
@@ -2637,7 +4041,12 @@ def build_qa_report(
 
     if failures:
         status = "fail"
-    elif manual_checks or text_check.get("pass") is not True:
+    elif (
+        manual_checks
+        or text_check.get("pass") is not True
+        or object_count_check.get("pass") is not True
+        or association_check.get("pass") is not True
+    ):
         status = "conditional_pass"
     else:
         status = "pass"
@@ -2657,7 +4066,9 @@ def build_qa_report(
         "layout_delta": layout_delta,
         "result_image": result,
         "exact_text_check": text_check,
+        "object_count_check": object_count_check,
         "association_check": association_check,
+        "structured_observation_check": structured_check,
         "integration_check": integration_check,
         "ocr_notes": ocr_notes,
         "protected_pixels_verified": protected_pixels_verified,

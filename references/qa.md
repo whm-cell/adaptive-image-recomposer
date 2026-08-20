@@ -1,6 +1,6 @@
 # Reconstruction QA
 
-Scripts can prove file facts and compare text candidates; visual review is still required.
+Scripts can prove file facts and enforce a structured content contract; visual review is still required for appearance and integration. The two evidence types are independent.
 
 ## Content fidelity
 
@@ -10,7 +10,26 @@ Scripts can prove file facts and compare text candidates; visual review is still
 - No unverified brand, claim, fine print, or decorative copy was invented.
 - Every item keeps its own name, values, qualifiers, and product association. Correct strings attached to the wrong item fail.
 
-OCR is supporting evidence, not sole proof. Normalize whitespace for comparison, but do not normalize away meaningful punctuation, units, decimals, or masked characters.
+Run two text comparisons: required text must be contained in observed text, and observed text must be contained in the declared whitelist. Count occurrences, so duplicated allowed-looking copy still fails when it exceeds cardinality. OCR is supporting evidence, not sole proof. Normalize whitespace for comparison, but do not normalize away meaningful punctuation, units, decimals, or masked characters.
+
+## Structured observations
+
+For a production pass, provide `result-observations.json`:
+
+```json
+{
+  "text_regions": [
+    {"text_id": "item-01-dose", "text": "含量400mg", "group_id": "item-01", "confidence": 0.99}
+  ],
+  "object_regions": [
+    {"object_id": "product-01", "group_id": "item-01", "confidence": 0.99}
+  ]
+}
+```
+
+One record represents one independently segmented visible occurrence. Optional normalized `bbox` values provide audit evidence. The QA gate checks literal text, whitelist membership, duplicate and missing occurrences, object cardinality, total product count, and the expected `group_id` for every stable node ID. Unknown IDs fail in a closed world. Low-confidence observations remain conditional until reviewed.
+
+Flat `--ocr-text` cannot prove object inventory or associations and therefore cannot produce a full pass for a grouped product comparison. Automatic OCR discrepancies remain review candidates; independently reviewed structured discrepancies are hard failures. `--visual-review-passed` never changes text, object-count, or association results.
 
 ## Protected pixels
 
@@ -53,11 +72,13 @@ This review is independent from OCR and layout-delta checks. Pass `--integration
 
 ## Result states
 
-- `pass`: all machine-checkable requirements pass and visual review is complete.
+Presentation and acceptance are independent. If the provider returned an image, show and retain it before or alongside QA regardless of the state below. A `fail` result means “visible candidate that failed acceptance,” not “hide the candidate and regenerate.” If the provider returned no artifact, report that provider failure separately; QA cannot manufacture a result.
+
+- `pass`: bidirectional text, object-count, and association checks pass, and all named visual, protected-pixel, and integration reviews are complete.
 - `conditional_pass`: machine checks pass but named visual, association, protected-pixel, or integration checks remain.
 - `fail`: a required invariant, fidelity rule, or radicality rule failed.
 - `blocked`: required source information or a clean protected asset is unavailable.
 
-Retry one defect at a time. Repair the affected semantic node—object, copy anchor, edges, grounding, and local material together. Do not repair integration by reverting to a generic background plus overlay. If the defect is text fidelity in a generative result, switch to hybrid or deterministic rendering instead of repeatedly asking the generator to typeset dense copy.
+Retry one defect at a time only after the human explicitly authorizes one additional provider call. Repair the affected semantic node—object, copy anchor, edges, grounding, and local material together. Do not repair integration by reverting to a generic background plus overlay. If the defect is text fidelity in a generative result, switch to hybrid or deterministic rendering instead of repeatedly asking the generator to typeset dense copy.
 
-For model-led work, permit two targeted repair edits to the latest result. Then escalate the renderer if the same string, association, or object-identity defect persists.
+Automatic retries are forbidden. Permit at most two human-authorized follow-up calls across targeted repairs and provider retries. Then escalate the renderer if the same string, association, or object-identity defect persists.

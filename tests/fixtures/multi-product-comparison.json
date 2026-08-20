@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "job_id": "immune-protein-comparison-demo",
   "source": {
     "path": "/fixture/immune-protein-comparison.png",
@@ -20,6 +20,32 @@
     "type": "multi_product_comparison",
     "item_count": 9,
     "text_density": "high",
+    "contract": {
+      "mode": "closed_world",
+      "unknown_policy": "block",
+      "forbid_undeclared_text": true,
+      "allowed_visible_text_ids": [
+        "headline", "callout-full", "callout-basic",
+        "mythsky-name", "mythsky-dose", "mythsky-combo",
+        "le-name", "le-dose", "le-combo",
+        "yot-name", "yot-dose", "yot-combo",
+        "bissun-name", "bissun-dose", "bissun-combo",
+        "keen-name", "keen-dose", "keen-combo",
+        "smal-name", "smal-dose", "smal-combo",
+        "kwi-name", "kwi-dose", "kwi-combo",
+        "kang-name", "kang-dose", "kang-combo",
+        "gao-name", "gao-dose", "gao-combo", "footnote"
+      ],
+      "required_item_count": 9,
+      "group_schemas": [
+        {
+          "role": "comparison_item",
+          "required_count": 9,
+          "required_object_types": {"product": 1},
+          "required_text_kinds": {"item_name": 1, "data": 2}
+        }
+      ]
+    },
     "objects": [
       {"id": "product-mythsky", "type": "product", "label": "Mythsky", "bbox": [0.33, 0.15, 0.44, 0.32], "preserve": "lock_pixels", "evidence": "visual", "verified": true},
       {"id": "product-le", "type": "product", "label": "乐*", "bbox": [0.58, 0.15, 0.71, 0.32], "preserve": "lock_pixels", "evidence": "visual", "verified": true},
@@ -63,6 +89,17 @@
       {"id": "gao-dose", "text": "含量100mg", "kind": "data", "language": "zh-Hans", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
       {"id": "gao-combo", "text": "复配成份：3种", "kind": "data", "language": "zh-Hans", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true},
       {"id": "footnote", "text": "以上数据均来自于官方，排名不分先后", "kind": "footnote", "language": "zh-Hans", "importance": "required", "lock_exact": true, "evidence": "visual", "confidence": 1.0, "verified": true}
+    ],
+    "groups": [
+      {"id": "comparison-node-1", "role": "comparison_item", "sequence": 1, "member_refs": ["product-mythsky", "mythsky-name", "mythsky-dose", "mythsky-combo"]},
+      {"id": "comparison-node-2", "role": "comparison_item", "sequence": 2, "member_refs": ["product-le", "le-name", "le-dose", "le-combo"]},
+      {"id": "comparison-node-3", "role": "comparison_item", "sequence": 3, "member_refs": ["product-yot", "yot-name", "yot-dose", "yot-combo"]},
+      {"id": "comparison-node-4", "role": "comparison_item", "sequence": 4, "member_refs": ["product-bissun", "bissun-name", "bissun-dose", "bissun-combo"]},
+      {"id": "comparison-node-5", "role": "comparison_item", "sequence": 5, "member_refs": ["product-ke-en", "keen-name", "keen-dose", "keen-combo"]},
+      {"id": "comparison-node-6", "role": "comparison_item", "sequence": 6, "member_refs": ["product-smal", "smal-name", "smal-dose", "smal-combo"]},
+      {"id": "comparison-node-7", "role": "comparison_item", "sequence": 7, "member_refs": ["product-kwi", "kwi-name", "kwi-dose", "kwi-combo"]},
+      {"id": "comparison-node-8", "role": "comparison_item", "sequence": 8, "member_refs": ["product-kang", "kang-name", "kang-dose", "kang-combo"]},
+      {"id": "comparison-node-9", "role": "comparison_item", "sequence": 9, "member_refs": ["product-gao", "gao-name", "gao-dose", "gao-combo"]}
     ]
   },
   "source_layout": {

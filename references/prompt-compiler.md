@@ -7,14 +7,21 @@ The compiler turns verified content, content-group bindings, one selected struct
 1. route-bound human selection and output use;
 2. input image roles and asset readiness;
 3. outcome contract and renderer authority;
-4. primary joint-reconstruction request;
-5. selected direction family, topology kernel, reading path, and wireframe;
-6. paired visual system;
-7. product and text embedding grammars;
-8. content-group bindings as semantic composition nodes;
-9. exact visible copy and protected-source policy;
-10. source features to suppress;
-11. no-invention, anti-paste, and output constraints.
+4. immutable closed-world content budget, cardinalities, and group schemas;
+5. primary joint-reconstruction request;
+6. selected direction family, topology kernel, reading path, and wireframe;
+7. paired visual system;
+8. product and text embedding grammars;
+9. content-group bindings as semantic composition nodes;
+10. exact visible copy and protected-source policy;
+11. source features to suppress;
+12. no-invention, anti-paste, and output constraints.
+
+## Immutable content budget
+
+For a closed-world job, enumerate every permitted visible text node by stable ID, literal string, required/allowed state, and cardinality. Enumerate every object by stable ID, type, and cardinality. Include the repeated group schemas and required item count. State both set inclusions explicitly: required text must be contained in observed text, and observed text must be contained in the whitelist.
+
+This budget outranks aesthetics. The renderer must not delete, summarize, merge, split, duplicate, paraphrase, translate, or invent content to balance the canvas. If the selected direction cannot hold the budget, routing must reject that direction; prompt compression is not a remedy.
 
 ## Prompt isolation
 
@@ -63,7 +70,7 @@ Edit the latest result and name one defect. Repeat:
 - all invariants;
 - no-extra-text and no-new-object constraints.
 
-After two failures of the same exact-copy or association defect, escalate the renderer instead of lengthening the prompt indefinitely.
+The repair prompt defines work but does not authorize an external call. Never retry automatically. Before each follow-up, obtain a fresh explicit human authorization covering exactly one request; allow at most two human-authorized follow-up calls across repairs and provider retries. Then escalate the renderer instead of lengthening the prompt indefinitely. A retry may repair one failed node, but it may not relax the whitelist, item count, group schema, or any already-correct node.
 
 ## Invariants
 
