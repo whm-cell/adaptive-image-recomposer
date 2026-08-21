@@ -23,7 +23,7 @@
   "files": [
     {
       "path": "SKILL.md",
-      "sha256": "c56ca16ec7fc593507287f3148d9def75ea3991049f12f64fbe011c8f6010dc6"
+      "sha256": "c4dd29b0858c41108bb76e66f5bd555e917a699338853080a6a393a0d5e88cc3"
     },
     {
       "path": "agents/openai.yaml",
@@ -103,7 +103,7 @@
     },
     {
       "path": "references/strategy-routing.md",
-      "sha256": "465ef82cbabb987b2e2b03d00fb1bd098d2d3052a7d812153195543aeb32339a"
+      "sha256": "e0670e2c3d6bec8cb26119462f3f847a6811e45adfd449d127efb28140c2f999"
     },
     {
       "path": "scripts/recompose.py",
@@ -111,8 +111,8 @@
     },
     {
       "path": "scripts/recomposer_core.py",
-      "sha256": "128fb90d37e4c5f731a3b3eb7f4f6c2c54e3bfcdac31050ae9773cd3fee22b55"
+      "sha256": "16c627eb38db0c86609626e41d2f27e6aff2a1f963f434fafd02d37da2a2791d"
     }
   ],
-  "content_digest": "4db9f41cbf3b16f1f8805c0483e08302a4895d8b546fc26bcba21d22f0723ff7"
+  "content_digest": "932aa37cbdda1cbc0e6e7adcb42e1db233f5ad1fc48721a768ea78ff01f17cd4"
 }

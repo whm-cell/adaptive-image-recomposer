@@ -118,6 +118,46 @@ class RecomposerTests(unittest.TestCase):
         ]
         return manifest
 
+    def _style_reference_manifest(self):
+        manifest = copy.deepcopy(self.manifest)
+        manifest["source"]["role"] = "style_reference"
+        manifest["intent"]["outcome_contract"] = "creative_reconstruction"
+        manifest["intent"]["output_usage"] = (
+            "创作一张全新抽象海报，只参考原图的构图节奏和配色，不保留原图事实内容"
+        )
+        manifest["intent"]["exact_text_required"] = False
+        manifest["content"] = {
+            "type": "illustration_freeform",
+            "item_count": 0,
+            "text_density": "low",
+            "objects": [],
+            "text_blocks": [],
+            "groups": [],
+            "contract": {
+                "mode": "open_world",
+                "unknown_policy": "block",
+                "forbid_undeclared_text": True,
+                "allowed_visible_text_ids": [],
+                "required_item_count": 0,
+                "group_schemas": [],
+            },
+        }
+        manifest["preservation"] = {
+            "must_preserve_text_ids": [],
+            "protected_regions": [],
+            "forbidden_inference": [
+                "原图品牌",
+                "原图产品",
+                "原图人物身份",
+                "原图文字和数字",
+                "原图功效表述",
+            ],
+            "source_features_to_avoid": ["原图事实内容"],
+        }
+        manifest["uncertainties"] = []
+        manifest["render"]["preferred_mode"] = "auto"
+        return manifest
+
     def test_fixture_is_valid(self) -> None:
         report = validate_manifest(self.manifest)
         self.assertTrue(report["valid"], report["errors"])
@@ -294,9 +334,10 @@ class RecomposerTests(unittest.TestCase):
             self.assertIn("Concept isolation:", prompt)
             self.assertIn("Visual system:", prompt)
             self.assertIn("Embedding grammar:", prompt)
-            self.assertEqual(board.count("## Lane "), 6)
+            self.assertEqual(board.count("## 方向 "), 6)
             for candidate in route["candidates"]:
-                self.assertIn(candidate["id"], board)
+                self.assertIn(candidate["presentation"]["title"], board)
+                self.assertNotIn(candidate["id"], board)
             for candidate in route["candidates"][1:]:
                 self.assertNotIn(candidate["id"], prompt)
             self.assertEqual(len(production["text_blocks"]), 31)
@@ -391,9 +432,79 @@ class RecomposerTests(unittest.TestCase):
             self.assertEqual(plan["coordinate_status"], "joint_scene_layout_engine_resolved")
             self.assertEqual(len(graph["groups"]), 9)
             self.assertEqual(len(production["group_bindings"]), 9)
-            self.assertEqual(board.count("## Lane "), 6)
+            self.assertEqual(board.count("## 方向 "), 6)
             self.assertIn("fresh explicit human authorization", retry)
             self.assertIn("at most two human-authorized follow-up calls", retry)
+
+    def test_style_reference_compiles_one_clean_non_factual_handoff(self) -> None:
+        manifest = self._style_reference_manifest()
+        validation = validate_manifest(manifest)
+        self.assertTrue(validation["valid"], validation["errors"])
+        route = build_route_decision(manifest, self.catalog)
+        selection = self._selection(route)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            outputs = write_compiled_artifacts(
+                manifest, route, selection, self.catalog, Path(temp_dir)
+            )
+            prompt = outputs["prompt"].read_text(encoding="utf-8")
+            graph = json.loads(outputs["content_graph"].read_text(encoding="utf-8"))
+            plan = json.loads(outputs["plan"].read_text(encoding="utf-8"))
+            production = json.loads(
+                outputs["production_layers"].read_text(encoding="utf-8")
+            )
+            asset_plan = json.loads(outputs["asset_plan"].read_text(encoding="utf-8"))
+            retry = outputs["retry"].read_text(encoding="utf-8")
+            board = outputs["direction_board"].read_text(encoding="utf-8")
+            selected = route["candidates"][0]
+
+            self.assertEqual(route["outcome_contract"], "creative_reconstruction")
+            self.assertTrue(all(value == 0 for value in route["content_load"].values()))
+            self.assertTrue(
+                all("presentation" in candidate for candidate in route["candidates"])
+            )
+            self.assertEqual(board.count("## 方向 "), 6)
+            for candidate in route["candidates"]:
+                self.assertIn(candidate["presentation"]["title"], board)
+                self.assertNotIn(candidate["id"], board)
+            self.assertNotIn("Reconstruction direction board", board)
+            self.assertNotIn("Why it fits", board)
+            self.assertNotIn("Kinetic Type Islands", board)
+            self.assertNotIn("Retro Riso", board)
+            self.assertNotIn("exact copy", board)
+            self.assertIn("仅用于参考非事实性的构图节奏", prompt)
+            self.assertIn("不得复制或重建原图中的品牌", prompt)
+            self.assertIn(selected["presentation"]["title"], prompt)
+            self.assertNotIn(selected["id"], prompt)
+            self.assertNotIn(selected["direction_family"], prompt)
+            self.assertNotIn(selected["topology_family"], prompt)
+            self.assertNotIn("factual content reference", prompt)
+            self.assertNotIn("Preserve verified information", prompt)
+            self.assertNotIn("exact copy", prompt)
+            self.assertEqual(graph["nodes"], {"objects": [], "text_blocks": []})
+            self.assertEqual(graph["groups"], [])
+            self.assertEqual(
+                plan["model_authority"],
+                "new_content_generation_with_non_factual_visual_reference",
+            )
+            self.assertEqual(production["text_blocks"], [])
+            self.assertEqual(production["prepared_assets"], [])
+            self.assertEqual(production["group_bindings"], [])
+            self.assertEqual(asset_plan["items"], [])
+            self.assertEqual(asset_plan["summary"]["object_count"], 0)
+            self.assertIn("不得自动重试", retry)
+
+    def test_style_reference_rejects_factual_source_content(self) -> None:
+        manifest = self._style_reference_manifest()
+        manifest["content"] = copy.deepcopy(self.manifest["content"])
+        report = validate_manifest(manifest)
+        self.assertFalse(report["valid"])
+        self.assertTrue(
+            any(
+                "style_reference cannot carry source objects" in error
+                for error in report["errors"]
+            ),
+            report["errors"],
+        )
 
     def test_one_use_render_authorization_preserves_returned_artifact(self) -> None:
         route = build_route_decision(self.manifest, self.catalog)
@@ -775,13 +886,16 @@ class RecomposerTests(unittest.TestCase):
     def test_direction_board_is_a_real_human_decision_surface(self) -> None:
         route = build_route_decision(self.manifest, self.catalog)
         board = compile_direction_board(route)
-        self.assertIn("Human checkpoint:", board)
-        self.assertIn("Best overall:", board)
-        self.assertIn("Boldest change:", board)
-        self.assertIn("Safest production:", board)
-        self.assertEqual(board.count("- Wireframe:"), 6)
-        self.assertEqual(board.count("- Product embedding:"), 6)
-        self.assertEqual(board.count("- Decision scores:"), 6)
+        self.assertIn("# 重构方向", board)
+        self.assertIn("请选择一个方向继续", board)
+        self.assertIn("最推荐", board)
+        self.assertIn("变化最大", board)
+        self.assertIn("稳妥易执行", board)
+        self.assertEqual(board.count("## 方向"), 6)
+        self.assertEqual(board.count("- 方案说明："), 6)
+        self.assertEqual(board.count("- 内容边界："), 6)
+        self.assertNotIn("candidate_id", board)
+        self.assertNotIn("Decision scores", board)
 
     def test_asset_preparation_plan_forbids_fake_transparency(self) -> None:
         plan = build_asset_preparation_plan(self.manifest, "hybrid")

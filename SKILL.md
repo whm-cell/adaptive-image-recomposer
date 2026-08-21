@@ -15,6 +15,7 @@ This Skill is deliberately multi-directional. It first explores a broad, extensi
 - Do not claim access to an image model's hidden reasoning. Describe only observable inputs, outputs, constraints, and inferred functional stages.
 - Do not infer unreadable names, numbers, labels, medical claims, testimonials, or fine print.
 - Treat exact-copy and comparison jobs as a closed content world: visible text and object cardinality come only from the verified manifest. Composition quality never authorizes invented copy, dropped items, duplicated nodes, or migrated values.
+- Treat `style_reference` as a content-isolated source. It may guide composition, palette, texture, and visual treatment, but its people, products, brands, text, numbers, claims, and factual associations must not enter the content graph, direction presentation, compiled prompt, or renderer handoff.
 - A radical result must change layout topology and reading path, not merely color, decoration, or background.
 - Keep structural direction separate from visual finish. Recoloring or restyling one topology is not a new layout direction.
 - Do not create brand-specific or source-image-specific default routes.
@@ -51,7 +52,7 @@ python3 "$RECOMPOSER_SKILL_DIR/scripts/recompose.py" --machine validate \
 
 ### 1. Inspect inputs and assign roles
 
-View every local image. Assign each input one role: `edit_target`, `content_reference`, `style_reference`, or `insert_asset`. If a previous generated result is being refined, it becomes the new edit target; the original remains the factual content reference.
+View every local image. Assign each input one role: `edit_target`, `content_reference`, `style_reference`, or `insert_asset`. If a previous generated result is being refined, it becomes the new edit target; the original remains the factual content reference. A `style_reference` is never a factual content reference: keep its content graph empty and take new subject matter only from the user's request.
 
 Create a machine draft:
 
@@ -85,13 +86,13 @@ python3 "$RECOMPOSER_SKILL_DIR/scripts/recompose.py" route \
   JOB_DIR/source-manifest.json --out JOB_DIR/route-decision.json
 ```
 
-The default route produces six structurally diverse direction cards and writes `direction-board.md`. Before scoring taste, it rejects any lane whose declared capacity cannot hold the real item count, required text-node count, total required characters, or largest group. Each surviving card includes a wireframe, changed axes, product/text embedding grammar, asset gate, measured capacity margin, and risk. The active seed library has 8 structural families, 32 topology kernels, 12 independent visual systems, 4 asset-preparation modes, 5 product-embedding modes, and 6 text-embedding modes. It is an expandable idea tree, not a one-answer classifier.
+The default route produces six structurally diverse candidates. The machine route keeps the wireframe, changed axes, embedding grammar, capacity, risk, and catalog identifiers needed for validation and compilation. Each candidate also carries one bounded Chinese `presentation` with a title, short explanation, composition summary, visual treatment, and content boundary. `direction-board.md` contains only those public presentations and optional Chinese recommendation labels; it must not expose route IDs, catalog labels, metrics, or English implementation terms. Before scoring taste, routing rejects any candidate whose declared capacity cannot hold the real content load. The active seed library remains an expandable idea tree, not a user-facing catalog or one-answer classifier.
 
 Compare topology and reading path before finish. Read only the family leaves referenced by the shortlist. `best_overall`, `boldest_change`, and `safest_production` are recommendations for comparison, never an automatic selection. Use [references/direction-tree.md](references/direction-tree.md) and [references/strategy-routing.md](references/strategy-routing.md).
 
 ### 5. Stop for human selection
 
-Routing ends in `AWAITING_HUMAN_SELECTION`. Show the direction board to the user and do not compile, render, or silently choose the first or highest-scoring lane. After the user chooses, create a route-bound selection record:
+Routing ends in `AWAITING_HUMAN_SELECTION`. Show every candidate's exact public `presentation` to the user without rewriting it, and do not compile, render, or silently choose the first or highest-scoring lane. After the user chooses, create a route-bound selection record:
 
 ```bash
 python3 "$RECOMPOSER_SKILL_DIR/scripts/recompose.py" select \
@@ -120,7 +121,7 @@ Review these primary artifacts:
 - `reconstruction-plan.json`: selected kernel, joint nodes, renderer authority, embedding grammar, work stages, and escalation policy;
 - `production-layer-spec.json`: exact strings, protected-source contracts, and final semantic-node placement;
 - `render-boundary.json`: immutable prompt/plan bindings, the pre-call checkpoint, one-call authorization policy, and returned-artifact presentation policy;
-- `direction-board.md`: structurally diverse lanes and their paired visual systems;
+- `direction-board.md`: bounded Chinese presentations for the human choice;
 - `final-prompt.md`: the concise full-canvas or production rendering brief;
 - `retry-guide.md`: invariant-preserving edit protocol.
 
@@ -144,7 +145,7 @@ This command records permission; it does not invoke the image provider. One auth
 
 ### 8. Render by contract and preserve the provider outcome
 
-- `model-led`: send the edit target or factual reference with `final-prompt.md` to the built-in image-generation tool. Ask for one coordinated whole-canvas reconstruction, including composition, typography, objects, decorative language, and spacing. This is not a background-only pass.
+- `model-led`: send the edit target or factual reference with `final-prompt.md` to the built-in image-generation tool. Ask for one coordinated whole-canvas reconstruction, including composition, typography, objects, decorative language, and spacing. This is not a background-only pass. For `style_reference`, send only `final-prompt.md` as the content instruction and use the image solely for composition, palette, texture, and visual treatment; explicitly exclude all source facts.
 - `hybrid`: solve final semantic-node geometry first. Generate surfaces, material, and local transitions around those final nodes, then bind exact copy and prepared assets into the same composition; do not generate a generic backdrop and paste cards over it.
 - `locked-composite`: preserve protected cores while allowing only approved alpha/edge-band cleanup; design shared light, grounding, texture, and neighboring forms around the final protected nodes.
 - `deterministic`: construct the entire final canvas in HTML, SVG, canvas, or an existing layout engine from the same content graph and embedding grammar. It is a whole-canvas composition, not an empty background plus coordinate-reserved overlays.

@@ -53,7 +53,7 @@ Then assign one product-embedding grammar and one text-embedding grammar. Their 
 
 ## Stage E: decision board and human selection
 
-`direction-board.md` presents each candidate as a decision card. Compare:
+The machine route retains the detailed evidence used to compare candidates:
 
 - magnitude of structural change from the source;
 - legibility of the proposed reading path;
@@ -62,7 +62,9 @@ Then assign one product-embedding grammar and one text-embedding grammar. Their 
 - asset readiness, text capacity, fidelity, integration, and production risk;
 - visual-system fit.
 
-The board may label `best_overall`, `boldest_change`, and `safest_production`. These labels expose tradeoffs; they do not authorize automatic selection. Routing must stop in `AWAITING_HUMAN_SELECTION`. A human chooses a candidate, and the `select` command records the candidate, its visual system, rationale, and route fingerprint.
+Each candidate also provides a bounded Chinese `presentation`: title, short explanation, composition summary, visual treatment, and content boundary. That presentation is the only user-facing source of truth. `direction-board.md` may translate `best_overall`, `boldest_change`, and `safest_production` into concise Chinese recommendation labels, but it must omit candidate IDs, catalog labels, metrics, wireframes, and English implementation terms. A host copies every presentation unchanged; it does not ask another model to rewrite the Skill output.
+
+Routing must stop in `AWAITING_HUMAN_SELECTION`. A human chooses a candidate, and the `select` command records the candidate, its visual system, rationale, and route fingerprint. Recommendation labels never authorize automatic selection.
 
 ## Stage F: route-bound compilation
 

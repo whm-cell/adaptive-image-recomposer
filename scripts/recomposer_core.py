@@ -94,6 +94,54 @@ CAPACITY_FIELDS = {
     "max_group_text_chars",
     "max_group_count",
 }
+STYLE_REFERENCE_DIRECTION_PRESENTATIONS = {
+    "flow-path": (
+        "流线叙事",
+        "用一条连续的视觉动线串联主体，让视线沿弧线或折线自然推进",
+    ),
+    "editorial-hierarchy": (
+        "编辑式主视觉",
+        "用明确的主次尺度和留白建立杂志式层级，让核心主体先被看见",
+    ),
+    "modular-comparison": (
+        "错落模块",
+        "用大小不一的区块组织画面，避免平均分栏和重复卡片",
+    ),
+    "radial-network": (
+        "放射聚焦",
+        "围绕一个视觉焦点展开层次，让元素由中心向外形成张力",
+    ),
+    "diagrammatic-data": (
+        "图解结构",
+        "用清晰的节点、连线和分区建立秩序，同时保持整体像一张完整海报",
+    ),
+    "spatial-stage": (
+        "空间舞台",
+        "以前景、中景和背景的景深关系组织主体，形成具有空间感的完整场景",
+    ),
+    "typographic-graphic": (
+        "图形张力",
+        "用大形状、强对比和节奏变化构成画面骨架，不依赖额外文字",
+    ),
+    "tactile-organic": (
+        "有机材质",
+        "用柔和曲线、自然留白和触感材质构成更松弛的视觉节奏",
+    ),
+}
+STYLE_REFERENCE_VISUAL_PRESENTATIONS = {
+    "precision-modernist": ("精密现代", "使用克制配色、清晰边界和精确留白"),
+    "printed-editorial": ("温暖纸张", "使用温暖纸张、细腻印刷纹理和编辑感层次"),
+    "luxury-material": ("深色金属", "使用深色基调、金属细节和受控高光"),
+    "bold-pop-graphic": ("鲜明波普", "使用高饱和对比、粗线条和活泼图形节奏"),
+    "riso-print": ("复古孔版", "使用有限色板、颗粒网点和错版印刷质感"),
+    "luminous-translucency": ("轻透光感", "使用半透明层次、柔光和通透色彩叠加"),
+    "graphic-ink": ("黑白墨线", "使用鲜明黑白关系、墨线和手工印刷质感"),
+    "soft-natural": ("柔和自然", "使用低饱和自然色、柔和光线和有机材质"),
+    "technical-diagram": ("技术蓝图", "使用蓝图式线条、精确节点和理性空间"),
+    "quiet-exhibition": ("安静展陈", "使用中性色、宽松留白和展览式聚焦"),
+    "raw-structural": ("粗粝结构", "使用硬朗边框、直接对比和未经修饰的结构感"),
+    "tactile-3d": ("柔软立体", "使用圆润体积、柔软材质和轻盈阴影"),
+}
 
 
 class RecomposerError(RuntimeError):
@@ -1111,6 +1159,30 @@ def validate_manifest(manifest: Dict[str, Any]) -> Dict[str, Any]:
                 f"Blocking uncertainty {uncertainty.get('id', index)}: {uncertainty.get('reason', 'unspecified')}"
             )
 
+    if source_role == "style_reference":
+        if outcome_contract != "creative_reconstruction":
+            errors.append(
+                "style_reference requires intent.outcome_contract=creative_reconstruction"
+            )
+        if intent.get("exact_text_required"):
+            errors.append("style_reference cannot require exact source text")
+        factual_source_contract = bool(
+            objects
+            or text_blocks
+            or groups
+            or must_preserve
+            or protected_regions
+            or content.get("item_count", 0)
+            or contract.get("allowed_visible_text_ids")
+            or contract.get("required_item_count", 0)
+            or contract.get("group_schemas")
+        )
+        if factual_source_contract:
+            errors.append(
+                "style_reference cannot carry source objects, text, groups, protected regions, "
+                "or required content; put newly requested content in intent.output_usage"
+            )
+
     if intent.get("target_delta") == "radical":
         if not source_layout.get("topology", "").strip():
             errors.append("Radical redesign requires source_layout.topology")
@@ -1254,6 +1326,15 @@ def choose_renderer(manifest: Dict[str, Any]) -> str:
 
 def measure_content_load(manifest: Dict[str, Any]) -> Dict[str, int]:
     """Measure immutable content that a reconstruction lane must carry."""
+    if manifest.get("source", {}).get("role") == "style_reference":
+        return {
+            "item_count": 0,
+            "object_node_count": 0,
+            "required_text_node_count": 0,
+            "required_text_char_count": 0,
+            "group_count": 0,
+            "max_group_required_text_chars": 0,
+        }
     content = manifest.get("content", {})
     required_ids = set(manifest.get("preservation", {}).get("must_preserve_text_ids", []))
     text_by_id = {
@@ -1496,7 +1577,7 @@ def _strategy_compatibility(
     intent = manifest["intent"]
     content_type = content["type"]
     density = content["text_density"]
-    item_count = content["item_count"]
+    item_count = 1 if _uses_style_reference(manifest) else content["item_count"]
     source_aspect = manifest.get("source", {}).get("aspect_class", "portrait")
     target_aspect = parse_target_aspect(intent.get("target_aspect"), source_aspect)
     protected = bool(manifest.get("preservation", {}).get("protected_regions"))
@@ -1761,6 +1842,25 @@ def build_asset_preparation_plan(
 ) -> Dict[str, Any]:
     """Plan transparent, fidelity-aware assets before composition is compiled."""
     active_renderer = renderer or choose_renderer(manifest)
+    if _uses_style_reference(manifest):
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "job_id": manifest["job_id"],
+            "generated_at": utc_now(),
+            "renderer": active_renderer,
+            "items": [],
+            "summary": {
+                "object_count": 0,
+                "ready_count": 0,
+                "requires_preparation_count": 0,
+                "blocked_count": 0,
+                "seamless_embedding_gate": "ready",
+            },
+            "global_policy": [
+                "Do not extract, prepare, or embed factual assets from the source image.",
+                "Use the source only for non-factual composition, color, texture, and visual-rhythm reference.",
+            ],
+        }
     items: List[Dict[str, Any]] = []
     for item in manifest.get("content", {}).get("objects", []):
         if not isinstance(item, dict) or not item.get("verified"):
@@ -1862,6 +1962,19 @@ def _embedding_plan_for_candidate(
 ) -> Dict[str, Any]:
     direction_family = candidate["direction_family"]
     topology = candidate["topology_family"]
+    if _uses_style_reference(manifest):
+        return {
+            "product_mode": "new-subject-synthesis",
+            "text_mode": "requested-copy-only",
+            "asset_requirement": "no_source_assets",
+            "joint_node_rule": (
+                "Compose only the new subject and copy explicitly requested by the user. "
+                "The source contributes no factual node."
+            ),
+            "anti_paste_rule": (
+                "Do not copy source products, people, brands, text, numbers, claims, or factual associations."
+            ),
+        }
     blocked = asset_plan["summary"]["blocked_count"] > 0
     if renderer in {"model-led", "generative"}:
         product_mode = "semantic-joint-render"
@@ -1928,6 +2041,65 @@ def _wireframe_for_candidate(candidate: Dict[str, Any]) -> str:
         family,
         "hero anchor -> structurally varied semantic nodes -> controlled close",
     )
+
+
+def _direction_presentation(
+    candidate: Dict[str, Any], manifest: Dict[str, Any]
+) -> Dict[str, str]:
+    """Build one Chinese, user-facing direction without exposing catalog prose."""
+    direction_name, composition = STYLE_REFERENCE_DIRECTION_PRESENTATIONS.get(
+        candidate.get("direction_family"),
+        ("结构重组", "重新组织画面层级、动线和留白，让主体关系更清晰"),
+    )
+    visual = candidate.get("visual_system", {})
+    visual_name, visual_treatment = STYLE_REFERENCE_VISUAL_PRESENTATIONS.get(
+        visual.get("visual_family") if isinstance(visual, dict) else None,
+        ("统一质感", "使用统一的色彩、材质和光影完成整张画面"),
+    )
+    outcome_contract = manifest.get("intent", {}).get(
+        "outcome_contract", "audited_content"
+    )
+    if _uses_style_reference(manifest):
+        content_boundary = (
+            "原图只提供非事实性的视觉参考；不得带入原图品牌、产品、人物、文字、数字、"
+            "功效表述或事实关联"
+        )
+    elif outcome_contract == "pixel_fidelity":
+        content_boundary = "保留已确认的信息、对应关系和受保护像素区域，只重构允许变化的部分"
+    elif outcome_contract == "audited_content":
+        content_boundary = "保留已确认的文字、对象和对应关系，不新增未经确认的事实内容"
+    else:
+        content_boundary = "以用户要求为主，原图语义只作辅助，不承担逐字或逐像素保真"
+    return {
+        "title": f"{direction_name} · {visual_name}",
+        "description": f"{composition}；{visual_treatment}。",
+        "composition": composition,
+        "visual_treatment": visual_treatment,
+        "content_boundary": content_boundary,
+    }
+
+
+def _attach_direction_presentations(
+    shortlist: List[Dict[str, Any]], manifest: Dict[str, Any]
+) -> None:
+    """Attach the public direction copy and isolate style-only jobs from factual hints."""
+    for candidate in shortlist:
+        presentation = _direction_presentation(candidate, manifest)
+        candidate["presentation"] = presentation
+        if not _uses_style_reference(manifest):
+            continue
+        candidate["title"] = presentation["title"]
+        candidate["prompt_hints"] = [presentation["composition"]]
+        candidate["reasons"] = [presentation["description"]]
+        candidate["risks"] = []
+        candidate["wireframe"] = presentation["composition"]
+        visual = candidate.get("visual_system")
+        if isinstance(visual, dict):
+            visual["title"] = presentation["title"].split(" · ", 1)[-1]
+            visual["prompt_hints"] = [presentation["visual_treatment"]]
+            visual["negative_hints"] = []
+            visual["reasons"] = [presentation["visual_treatment"]]
+            visual["risks"] = []
 
 
 def _annotate_direction_cards(
@@ -2181,9 +2353,11 @@ def build_route_decision(
     )
     _assign_visual_systems(shortlist, manifest, catalog, renderer)
     asset_plan = build_asset_preparation_plan(manifest, renderer)
+    content_graph = build_content_graph(manifest)
     recommendations = _annotate_direction_cards(
         shortlist, manifest, renderer, asset_plan
     )
+    _attach_direction_presentations(shortlist, manifest)
     unique_direction_families = sorted(
         {item["direction_family"] for item in shortlist}
     )
@@ -2213,8 +2387,8 @@ def build_route_decision(
         ),
         "direction_mode": direction_mode,
         "direction_count_requested": requested_count,
-        "content_contract": manifest["content"]["contract"],
-        "content_load": measure_content_load(manifest),
+        "content_contract": content_graph["content_contract"],
+        "content_load": content_graph["content_load"],
         "candidates": [dict(candidate, rank=index) for index, candidate in enumerate(shortlist, start=1)],
         "recommendations": recommendations,
         "asset_readiness_summary": asset_plan["summary"],
@@ -2281,8 +2455,37 @@ def _locked_objects(manifest: Dict[str, Any]) -> List[Dict[str, Any]]:
     ]
 
 
+def _uses_style_reference(manifest: Dict[str, Any]) -> bool:
+    """Return whether the source contributes visual style but no factual content."""
+    return manifest.get("source", {}).get("role") == "style_reference"
+
+
 def build_content_graph(manifest: Dict[str, Any]) -> Dict[str, Any]:
     """Resolve objects, exact copy, and their non-transferable associations."""
+    if _uses_style_reference(manifest):
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "job_id": manifest["job_id"],
+            "generated_at": utc_now(),
+            "outcome_contract": "creative_reconstruction",
+            "content_contract": {
+                "mode": "open_world",
+                "unknown_policy": "block",
+                "forbid_undeclared_text": True,
+                "allowed_visible_text_ids": [],
+                "required_item_count": 0,
+                "group_schemas": [],
+            },
+            "content_load": measure_content_load(manifest),
+            "nodes": {"objects": [], "text_blocks": []},
+            "groups": [],
+            "ungrouped_refs": [],
+            "association_policy": [
+                "The source contributes no factual nodes or bindings.",
+                "Only subjects or copy explicitly requested by the user may appear in the result.",
+                "Do not reconstruct source brands, products, people, text, numbers, claims, or associations.",
+            ],
+        }
     object_nodes: List[Dict[str, Any]] = []
     text_nodes: List[Dict[str, Any]] = []
     node_by_id: Dict[str, Dict[str, Any]] = {}
@@ -2386,6 +2589,8 @@ def build_layout_spec(
     outcome_contract = manifest.get("intent", {}).get(
         "outcome_contract", "audited_content"
     )
+    style_reference = _uses_style_reference(manifest)
+    presentation = selected_candidate.get("presentation", {})
     content_graph = build_content_graph(manifest)
     asset_plan = build_asset_preparation_plan(manifest, renderer)
     composition_modes = {
@@ -2407,7 +2612,10 @@ def build_layout_spec(
         "locked-composite": "replaceable_surroundings_with_locked_node_integration",
         "deterministic": "code_native_whole_canvas_composition",
     }[renderer]
-    if renderer in {"model-led", "generative"}:
+    if style_reference:
+        authority = "new_content_generation_with_non_factual_visual_reference"
+        fidelity_claim = "non_factual_visual_reference_no_source_content_retention"
+    elif renderer in {"model-led", "generative"}:
         fidelity_claim = "semantic_identity_plus_audited_copy_no_pixel_fidelity"
     elif _locked_objects(manifest) or manifest.get("preservation", {}).get("protected_regions"):
         fidelity_claim = "protected_core_pixels_plus_audited_copy_after_asset_preparation"
@@ -2443,12 +2651,37 @@ def build_layout_spec(
                 "product_embedding": embedding_plan["product_mode"],
                 "text_embedding": embedding_plan["text_mode"],
                 "geometry_status": coordinate_status,
-                "integration_contract": [
-                    "bind global content to the headline, legend, or conclusion hierarchy",
-                    "do not leave content as a floating pasted block",
-                ],
+                "integration_contract": (
+                    [
+                        "compose only the new subject or copy explicitly requested by the user",
+                        "do not reconstruct any factual source content",
+                    ]
+                    if style_reference
+                    else [
+                        "bind global content to the headline, legend, or conclusion hierarchy",
+                        "do not leave content as a floating pasted block",
+                    ]
+                ),
             }
         )
+
+    production_stages = (
+        [
+            "interpret_the_user_request_and_selected_direction",
+            "use_the_source_only_for_non_factual_visual_cues",
+            "synthesize_the_new_requested_subject_and_copy",
+            "audit_selected_direction_and_absence_of_source_facts",
+        ]
+        if style_reference
+        else [
+            "prepare_or_verify_transparent_assets",
+            "solve_composition_kernel_and_all_semantic_nodes_as_one_scene_plan",
+            "render_or_construct_shared_surfaces_connectors_lighting_and_negative_space",
+            "place_exact_copy_and_protected_assets_inside_the_same_node_geometry",
+            "apply_contact_shadows_edge_matching_overlap_and_material_interactions",
+            "audit_copy_group_associations_asset_edges_and_structural_delta",
+        ]
+    )
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -2464,12 +2697,13 @@ def build_layout_spec(
         },
         "strategy": {
             "id": strategy["id"],
-            "title": strategy["title"],
+            "title": presentation.get("title", strategy["title"]),
             "reference": f"references/strategies/{strategy['leaf']}",
             "direction_family": strategy["direction_family"],
             "topology_family": strategy["topology_family"],
             "reading_path": strategy["reading_path"],
         },
+        "presentation": presentation,
         "visual_system": {
             "id": visual_system["id"],
             "title": visual_system["title"],
@@ -2480,8 +2714,8 @@ def build_layout_spec(
         "renderer": renderer,
         "composition_mode": composition_modes[renderer],
         "outcome_contract": outcome_contract,
-        "content_contract": manifest["content"]["contract"],
-        "content_load": measure_content_load(manifest),
+        "content_contract": content_graph["content_contract"],
+        "content_load": content_graph["content_load"],
         "selected_lane_capacity": selected_candidate.get("capacity_check", {}),
         "fidelity_claim": fidelity_claim,
         "model_authority": authority,
@@ -2500,7 +2734,11 @@ def build_layout_spec(
             "topology_family": strategy["topology_family"],
             "reading_path": strategy["reading_path"],
             "wireframe": selected_candidate.get("wireframe"),
-            "structural_prompt_hints": strategy.get("prompt_hints", []),
+            "structural_prompt_hints": (
+                [presentation.get("composition", "")]
+                if style_reference
+                else strategy.get("prompt_hints", [])
+            ),
             "visual_system_id": visual_system["id"],
             "visual_family": visual_system["visual_family"],
             "visual_prompt_hints": visual_system.get("prompt_hints", []),
@@ -2509,21 +2747,18 @@ def build_layout_spec(
         "embedding_grammar": embedding_plan,
         "asset_readiness": asset_plan["summary"],
         "joint_nodes": joint_nodes,
-        "production_stages": [
-            "prepare_or_verify_transparent_assets",
-            "solve_composition_kernel_and_all_semantic_nodes_as_one_scene_plan",
-            "render_or_construct_shared_surfaces_connectors_lighting_and_negative_space",
-            "place_exact_copy_and_protected_assets_inside_the_same_node_geometry",
-            "apply_contact_shadows_edge_matching_overlap_and_material_interactions",
-            "audit_copy_group_associations_asset_edges_and_structural_delta",
-        ],
+        "production_stages": production_stages,
         "degraded_asset_fallback": {
-            "active": asset_plan["summary"]["blocked_count"] > 0,
-            "mode": "explicit_visible_frame",
+            "active": False if style_reference else asset_plan["summary"]["blocked_count"] > 0,
+            "mode": "not_applicable" if style_reference else "explicit_visible_frame",
             "policy": (
-                "Use only for an individual source object that cannot be isolated safely. Keep the frame "
-                "visibly intentional and continue to compose the whole canvas jointly. Background-first "
-                "or coordinate-reserved overlay production is not an available workflow."
+                "No source asset fallback is permitted for a non-factual visual reference."
+                if style_reference
+                else (
+                    "Use only for an individual source object that cannot be isolated safely. Keep the frame "
+                    "visibly intentional and continue to compose the whole canvas jointly. Background-first "
+                    "or coordinate-reserved overlay production is not an available workflow."
+                )
             ),
         },
         "iteration_policy": {
@@ -2547,6 +2782,34 @@ def build_production_layer_spec(
     layout_spec: Dict[str, Any],
     asset_plan: Dict[str, Any],
 ) -> Dict[str, Any]:
+    if _uses_style_reference(manifest):
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "job_id": manifest["job_id"],
+            "strategy_id": layout_spec["strategy"]["id"],
+            "renderer": layout_spec["renderer"],
+            "composition_mode": layout_spec["composition_mode"],
+            "coordinate_status": layout_spec["coordinate_status"],
+            "content_contract": layout_spec["content_contract"],
+            "content_load": layout_spec["content_load"],
+            "selected_lane_capacity": layout_spec["selected_lane_capacity"],
+            "text_blocks": [],
+            "prepared_assets": [],
+            "group_bindings": [],
+            "protected_regions": [],
+            "joint_nodes": layout_spec["joint_nodes"],
+            "integration_requirements": [
+                "execute the selected direction using only non-factual visual cues from the source",
+                "synthesize only subjects or copy explicitly requested by the user",
+                "do not copy source brands, products, people, text, numbers, claims, or associations",
+            ],
+            "acceptance_invariants": [
+                "the selected direction is visibly expressed",
+                "no factual source content appears in the result",
+                "no unrequested visible text or subject is introduced",
+            ],
+            "fallback_policy": layout_spec["degraded_asset_fallback"],
+        }
     required_ids = set(manifest["preservation"]["must_preserve_text_ids"])
     verified_text = [
         {
@@ -2616,9 +2879,63 @@ def _imagegen_use_case(manifest: Dict[str, Any]) -> str:
     return mapping[content_type]
 
 
+def _compile_style_reference_prompt(
+    manifest: Dict[str, Any], route: Dict[str, Any], layout_spec: Dict[str, Any]
+) -> str:
+    """Compile a clean generation brief when the source has no factual authority."""
+    presentation = layout_spec["presentation"]
+    lines = [
+        "# 图像渲染合同",
+        "",
+        f"用户任务：{manifest['intent']['output_usage']}",
+        (
+            "输入图说明：图 1 仅用于参考非事实性的构图节奏、色彩氛围、材质语言和视觉风格；"
+            "它不是内容、事实或可复用素材的来源。"
+        ),
+        (
+            "内容隔离：不得复制或重建原图中的品牌、产品、人物身份、可见文字、数字、"
+            "医疗或功效表述及其事实关联。"
+        ),
+        (
+            "生成范围：只生成用户明确要求的新主题和新内容；除非用户任务明确要求，"
+            "画面中不得出现可读文字。"
+        ),
+        "",
+        "# 已选方向",
+        "",
+        f"画布比例：{route['target_aspect']}",
+        f"方向名称：{presentation['title']}",
+        f"构图方式：{presentation['composition']}",
+        f"视觉处理：{presentation['visual_treatment']}",
+        f"内容边界：{presentation['content_boundary']}",
+        (
+            "执行要求：只执行这一条已由用户选择的方向，不混合其他候选方向，"
+            "不重新选路，不复刻原图内容。"
+        ),
+    ]
+    exclusions = [
+        *manifest["preservation"].get("source_features_to_avoid", []),
+        *manifest["preservation"].get("forbidden_inference", []),
+    ]
+    if exclusions:
+        lines.append("禁止项：" + "；".join(exclusions))
+    lines.extend(
+        [
+            "",
+            "# 输出",
+            "",
+            "返回一张完成度高、可直接展示的新图片，不要返回线框图、空模板或素材拼贴。",
+            "生成后检查：已选方向清晰可见，且没有带入任何原图事实内容。",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
 def compile_prompt(
     manifest: Dict[str, Any], route: Dict[str, Any], layout_spec: Dict[str, Any]
 ) -> str:
+    if _uses_style_reference(manifest):
+        return _compile_style_reference_prompt(manifest, route, layout_spec)
     renderer = layout_spec["renderer"]
     required_text = _required_text_blocks(manifest)
     locked_objects = _locked_objects(manifest)
@@ -2904,6 +3221,18 @@ def compile_retry_guide(
     manifest: Dict[str, Any], route: Dict[str, Any], layout_spec: Dict[str, Any]
 ) -> str:
     renderer = route["renderer"]
+    if _uses_style_reference(manifest):
+        return "\n".join(
+            [
+                "# 定向修复说明",
+                "",
+                f"渲染器：{renderer}",
+                f"已选策略：{layout_spec['strategy']['id']}",
+                "每次只修复一个明确缺陷，并保持已选方向、构图骨架和视觉系统不变。",
+                "修复时仍只把原图作为非事实性的视觉参考，不得重新引入原图品牌、产品、人物身份、文字、数字、表述或事实关联。",
+                "不得自动重试；每一次额外的图像模型调用都需要新的人工授权。",
+            ]
+        ) + "\n"
     lines = [
         "# Targeted repair guide",
         "",
@@ -3310,81 +3639,45 @@ def record_render_attempt(
 
 
 def compile_direction_board(route: Dict[str, Any]) -> str:
-    """Render the divergent shortlist as comparable concept lanes before selection."""
-    recommendations = route.get("recommendations", {})
+    """Render the shortlist as concise Chinese choices for human selection."""
+    recommendation_labels = {
+        "best_overall": "最推荐",
+        "boldest_change": "变化最大",
+        "safest_production": "稳妥易执行",
+        "alternative": "备选",
+    }
     lines = [
-        "# Reconstruction direction board",
+        "# 重构方向",
         "",
-        f"Workflow state: `{route.get('workflow_state', 'unknown')}`",
-        f"Mode: {route.get('direction_mode', 'focused')}",
-        f"Renderer: {route.get('renderer', 'unknown')}",
-        f"Route fingerprint: `{route.get('route_fingerprint', 'unknown')}`",
-        (
-            "Closed content load: "
-            f"{route.get('content_load', {}).get('required_text_node_count', 0)} required text nodes / "
-            f"{route.get('content_load', {}).get('required_text_char_count', 0)} characters / "
-            f"{route.get('content_load', {}).get('group_count', 0)} groups."
-        ),
-        (
-            "Human checkpoint: compare structural difference, information capacity, embedding grammar, "
-            "and fidelity risk. Select exactly one lane; recommendation labels are decision aids and never "
-            "authorize automatic compilation."
-        ),
-        "",
-        "## Recommendation map",
-        "",
-        f"- Best overall: `{recommendations.get('best_overall', 'not_assigned')}`",
-        f"- Boldest change: `{recommendations.get('boldest_change', 'not_assigned')}`",
-        f"- Safest production: `{recommendations.get('safest_production', 'not_assigned')}`",
+        "请选择一个方向继续。系统不会自动替你选择，也不会混合多个方向。",
         "",
     ]
     for candidate in route.get("candidates", []):
         if not isinstance(candidate, dict):
             continue
-        visual = candidate.get("visual_system", {})
-        embedding = candidate.get("embedding_plan", {})
-        scores = candidate.get("decision_scores", {})
-        capacity = candidate.get("capacity_check", {})
+        presentation = candidate.get("presentation", {})
+        if not isinstance(presentation, dict):
+            presentation = {}
+        title = presentation.get("title", "结构重组")
+        description = presentation.get(
+            "description", "重新组织画面层级、动线和视觉质感。"
+        )
+        content_boundary = presentation.get(
+            "content_boundary", "只处理用户已确认允许变化的内容。"
+        )
+        recommendation = recommendation_labels.get(
+            candidate.get("recommendation"), "备选"
+        )
         lines.extend(
             [
-                f"## Lane {candidate.get('rank', '?')}: {candidate.get('title', candidate.get('id', 'unknown'))}",
+                f"## 方向 {candidate.get('rank', '?')}：{title}",
                 "",
-                f"- Recommendation: `{candidate.get('recommendation', 'alternative')}`",
-                f"- Kernel id: `{candidate.get('id', 'unknown')}`",
-                f"- Direction family: `{candidate.get('direction_family', 'unknown')}`",
-                f"- Topology: `{candidate.get('topology_family', 'unknown')}`",
-                f"- Reading path: `{candidate.get('reading_path', 'unknown')}`",
-                f"- Visual system: `{visual.get('id', 'unknown')}` ({visual.get('visual_family', 'unknown')})",
-                f"- Wireframe: `{candidate.get('wireframe', 'not_available')}`",
-                f"- Changed axes: {', '.join(candidate.get('changed_axes', [])) or 'none'}",
-                f"- Product embedding: `{embedding.get('product_mode', 'unknown')}`",
-                f"- Text embedding: `{embedding.get('text_mode', 'unknown')}`",
-                f"- Asset gate: `{embedding.get('asset_requirement', 'unknown')}`",
-                f"- Text capacity: `{candidate.get('text_capacity', 'unknown')}`",
-                (
-                    "- Capacity gate: "
-                    f"`{capacity.get('status', 'unknown')}`; peak utilization "
-                    f"{capacity.get('max_utilization', 'unknown')}; margins "
-                    f"{capacity.get('margins', {})}"
-                ),
-                f"- Production risk: `{candidate.get('production_risk', 'unknown')}`",
-                (
-                    "- Decision scores: "
-                    f"overall {scores.get('overall', 'unknown')} / "
-                    f"compatibility {scores.get('compatibility', 'unknown')} / "
-                    f"boldness {scores.get('boldness', 'unknown')} / "
-                    f"safety {scores.get('production_safety', 'unknown')} / "
-                    f"integration {scores.get('integration_confidence', 'unknown')}"
-                ),
+                f"- 推荐标签：{recommendation}",
+                f"- 方案说明：{description}",
+                f"- 内容边界：{content_boundary}",
+                "",
             ]
         )
-        reasons = candidate.get("reasons", [])
-        risks = candidate.get("risks", []) + visual.get("risks", [])
-        if reasons:
-            lines.append("- Why it fits: " + "; ".join(reasons))
-        if risks:
-            lines.append("- Risks: " + "; ".join(risks))
-        lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
 
