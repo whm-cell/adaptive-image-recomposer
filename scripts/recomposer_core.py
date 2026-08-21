@@ -10,6 +10,7 @@ import json
 import mimetypes
 import re
 import shutil
+import string
 import struct
 import subprocess
 import unicodedata
@@ -20,12 +21,15 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 
-SCHEMA_VERSION = "0.2"
+SCHEMA_VERSION = "0.3"
 CATALOG_VERSION = "0.4"
-POLICY_VERSION = "0.3"
+POLICY_VERSION = "0.4"
 SKILL_PROTOCOL_VERSION = "2"
 SKILL_PACK_FILENAME = "skill-pack.json"
 SKILL_ROOT = Path(__file__).resolve().parent.parent
+LOCALE_INDEX_RELATIVE_PATH = Path("references/locales/index.json")
+LOCALE_CONTRACT_RELATIVE_PATH = Path("references/locales/contract.json")
+LOCALE_CATALOG_RELATIVE_PATH = Path("references/strategies/catalog.json")
 CONTENT_TYPES = {
     "multi_product_comparison",
     "single_product_poster",
@@ -94,54 +98,9 @@ CAPACITY_FIELDS = {
     "max_group_text_chars",
     "max_group_count",
 }
-STYLE_REFERENCE_DIRECTION_PRESENTATIONS = {
-    "flow-path": (
-        "流线叙事",
-        "用一条连续的视觉动线串联主体，让视线沿弧线或折线自然推进",
-    ),
-    "editorial-hierarchy": (
-        "编辑式主视觉",
-        "用明确的主次尺度和留白建立杂志式层级，让核心主体先被看见",
-    ),
-    "modular-comparison": (
-        "错落模块",
-        "用大小不一的区块组织画面，避免平均分栏和重复卡片",
-    ),
-    "radial-network": (
-        "放射聚焦",
-        "围绕一个视觉焦点展开层次，让元素由中心向外形成张力",
-    ),
-    "diagrammatic-data": (
-        "图解结构",
-        "用清晰的节点、连线和分区建立秩序，同时保持整体像一张完整海报",
-    ),
-    "spatial-stage": (
-        "空间舞台",
-        "以前景、中景和背景的景深关系组织主体，形成具有空间感的完整场景",
-    ),
-    "typographic-graphic": (
-        "图形张力",
-        "用大形状、强对比和节奏变化构成画面骨架，不依赖额外文字",
-    ),
-    "tactile-organic": (
-        "有机材质",
-        "用柔和曲线、自然留白和触感材质构成更松弛的视觉节奏",
-    ),
-}
-STYLE_REFERENCE_VISUAL_PRESENTATIONS = {
-    "precision-modernist": ("精密现代", "使用克制配色、清晰边界和精确留白"),
-    "printed-editorial": ("温暖纸张", "使用温暖纸张、细腻印刷纹理和编辑感层次"),
-    "luxury-material": ("深色金属", "使用深色基调、金属细节和受控高光"),
-    "bold-pop-graphic": ("鲜明波普", "使用高饱和对比、粗线条和活泼图形节奏"),
-    "riso-print": ("复古孔版", "使用有限色板、颗粒网点和错版印刷质感"),
-    "luminous-translucency": ("轻透光感", "使用半透明层次、柔光和通透色彩叠加"),
-    "graphic-ink": ("黑白墨线", "使用鲜明黑白关系、墨线和手工印刷质感"),
-    "soft-natural": ("柔和自然", "使用低饱和自然色、柔和光线和有机材质"),
-    "technical-diagram": ("技术蓝图", "使用蓝图式线条、精确节点和理性空间"),
-    "quiet-exhibition": ("安静展陈", "使用中性色、宽松留白和展览式聚焦"),
-    "raw-structural": ("粗粝结构", "使用硬朗边框、直接对比和未经修饰的结构感"),
-    "tactile-3d": ("柔软立体", "使用圆润体积、柔软材质和轻盈阴影"),
-}
+FIDELITY_TIERS = {"F0", "F1", "F2", "F3"}
+FIDELITY_TIER_ORDER = {"F0": 0, "F1": 1, "F2": 2, "F3": 3}
+RISK_ASSESSMENTS = {"unreviewed", "model_reviewed", "human_verified"}
 
 
 class RecomposerError(RuntimeError):
@@ -163,6 +122,210 @@ def load_json(path: Path) -> Dict[str, Any]:
     if not isinstance(data, dict):
         raise RecomposerError(f"Expected a JSON object in {path}")
     return data
+
+
+def _dotted_value(document: Dict[str, Any], dotted_path: str) -> Any:
+    value: Any = document
+    for segment in dotted_path.split("."):
+        if not isinstance(value, dict) or segment not in value:
+            raise RecomposerError(f"Locale field is missing: {dotted_path}")
+        value = value[segment]
+    return value
+
+
+def _template_placeholders(template: str, dotted_path: str) -> List[str]:
+    try:
+        parsed = string.Formatter().parse(template)
+        placeholders = [field for _, field, _, _ in parsed if field is not None]
+    except ValueError as exc:
+        raise RecomposerError(
+            f"Locale template has invalid formatting at {dotted_path}: {exc}"
+        ) from exc
+    invalid = sorted(
+        {
+            field
+            for field in placeholders
+            if not isinstance(field, str)
+            or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", field)
+        }
+    )
+    if invalid:
+        raise RecomposerError(
+            f"Locale template uses unsupported placeholders at {dotted_path}: "
+            + ", ".join(invalid)
+        )
+    return sorted(set(placeholders))
+
+
+def _validate_locale_bundle(
+    bundle: Dict[str, Any],
+    bundle_path: Path,
+    contract: Dict[str, Any],
+    skill_root: Path,
+) -> None:
+    required_strings = contract.get("required_string_paths")
+    record_sections = contract.get("record_sections")
+    placeholder_contract = contract.get("template_placeholders")
+    catalog_bindings = contract.get("catalog_record_bindings")
+    if not isinstance(required_strings, list) or not all(
+        isinstance(path, str) and path for path in required_strings
+    ):
+        raise RecomposerError("Locale contract requires required_string_paths")
+    if not isinstance(record_sections, dict) or not isinstance(
+        placeholder_contract, dict
+    ):
+        raise RecomposerError(
+            "Locale contract requires record_sections and template_placeholders"
+        )
+    if not isinstance(catalog_bindings, dict):
+        raise RecomposerError("Locale contract requires catalog_record_bindings")
+
+    for dotted_path in required_strings:
+        value = _dotted_value(bundle, dotted_path)
+        if not isinstance(value, str) or not value:
+            raise RecomposerError(
+                f"Locale field must be a non-empty string in {bundle_path}: {dotted_path}"
+            )
+
+    for section, fields in record_sections.items():
+        records = bundle.get(section)
+        if not isinstance(section, str) or not isinstance(records, dict) or not records:
+            raise RecomposerError(
+                f"Locale record section is missing or empty in {bundle_path}: {section}"
+            )
+        if not isinstance(fields, list) or not all(
+            isinstance(field, str) and field for field in fields
+        ):
+            raise RecomposerError(f"Invalid locale record contract for {section}")
+        for record_id, record in records.items():
+            if not isinstance(record_id, str) or not isinstance(record, dict):
+                raise RecomposerError(
+                    f"Locale record is invalid in {bundle_path}: {section}.{record_id}"
+                )
+            for field in fields:
+                value = record.get(field)
+                if not isinstance(value, str) or not value:
+                    raise RecomposerError(
+                        "Locale record field must be a non-empty string in "
+                        f"{bundle_path}: {section}.{record_id}.{field}"
+                    )
+
+    for dotted_path, expected in placeholder_contract.items():
+        if not isinstance(dotted_path, str) or not isinstance(expected, list) or not all(
+            isinstance(field, str) and field for field in expected
+        ):
+            raise RecomposerError(
+                f"Invalid locale placeholder contract at {dotted_path}"
+            )
+        template = _dotted_value(bundle, dotted_path)
+        if not isinstance(template, str) or not template:
+            raise RecomposerError(
+                f"Locale template must be a non-empty string: {dotted_path}"
+            )
+        actual = _template_placeholders(template, dotted_path)
+        expected_fields = sorted(set(expected))
+        if actual != expected_fields:
+            raise RecomposerError(
+                f"Locale template placeholders differ at {dotted_path}; "
+                f"expected {expected_fields}, found {actual}"
+            )
+
+    catalog_path = skill_root / LOCALE_CATALOG_RELATIVE_PATH
+    catalog = load_json(catalog_path)
+    for locale_section, binding in catalog_bindings.items():
+        if not isinstance(locale_section, str) or not isinstance(binding, dict):
+            raise RecomposerError("Invalid locale catalog binding")
+        collection_name = binding.get("collection")
+        id_field = binding.get("id_field")
+        collection = catalog.get(collection_name)
+        if not isinstance(collection_name, str) or not isinstance(id_field, str):
+            raise RecomposerError(
+                f"Invalid locale catalog binding for {locale_section}"
+            )
+        if not isinstance(collection, list):
+            raise RecomposerError(
+                f"Catalog collection is missing for locale binding: {collection_name}"
+            )
+        expected_ids = {
+            record.get(id_field)
+            for record in collection
+            if isinstance(record, dict) and isinstance(record.get(id_field), str)
+        }
+        actual_records = bundle.get(locale_section)
+        actual_ids = set(actual_records) if isinstance(actual_records, dict) else set()
+        if actual_ids != expected_ids:
+            missing = sorted(expected_ids - actual_ids)
+            extra = sorted(actual_ids - expected_ids)
+            raise RecomposerError(
+                f"Locale catalog coverage differs for {locale_section}; "
+                f"missing={missing}, extra={extra}"
+            )
+
+
+def load_locale_bundle(
+    locale: Optional[str] = None,
+    root: Optional[Path] = None,
+) -> Tuple[str, Dict[str, Any]]:
+    """Resolve one presentation locale without affecting routing semantics."""
+    skill_root = (root or SKILL_ROOT).expanduser().resolve()
+    index_path = skill_root / LOCALE_INDEX_RELATIVE_PATH
+    contract_path = skill_root / LOCALE_CONTRACT_RELATIVE_PATH
+    index = load_json(index_path)
+    contract = load_json(contract_path)
+    resource_version = index.get("resource_version")
+    default_locale = index.get("default_locale")
+    aliases = index.get("aliases")
+    locales = index.get("locales")
+    if not isinstance(resource_version, str) or not resource_version:
+        raise RecomposerError(f"resource_version is missing in {index_path}")
+    if not isinstance(default_locale, str) or not default_locale:
+        raise RecomposerError(f"default_locale is missing in {index_path}")
+    if not isinstance(aliases, dict) or not isinstance(locales, dict):
+        raise RecomposerError(f"aliases and locales must be objects in {index_path}")
+
+    requested = locale or default_locale
+    if not isinstance(requested, str) or not requested.strip():
+        raise RecomposerError("presentation locale must be a non-empty string")
+    resolved = aliases.get(requested, requested)
+    relative = locales.get(resolved)
+    if not isinstance(relative, str) or not relative:
+        supported = ", ".join(sorted(locales))
+        raise RecomposerError(
+            f"Unsupported presentation locale {requested!r}; supported locales: {supported}"
+        )
+    relative_path = Path(relative)
+    if relative_path.is_absolute() or ".." in relative_path.parts:
+        raise RecomposerError(f"Unsafe locale resource path: {relative}")
+
+    bundle_path = index_path.parent / relative_path
+    bundle = load_json(bundle_path)
+    if bundle.get("locale") != resolved:
+        raise RecomposerError(
+            f"Locale identity mismatch in {bundle_path}: expected {resolved}"
+        )
+    if bundle.get("resource_version") != resource_version:
+        raise RecomposerError(
+            f"Locale resource version mismatch in {bundle_path}: "
+            f"expected {resource_version}"
+        )
+    _validate_locale_bundle(bundle, bundle_path, contract, skill_root)
+    return resolved, bundle
+
+
+def _locale_template(
+    bundle: Dict[str, Any],
+    section: str,
+    key: str,
+    **values: Any,
+) -> str:
+    section_value = bundle.get(section)
+    template = section_value.get(key) if isinstance(section_value, dict) else None
+    if not isinstance(template, str) or not template:
+        raise RecomposerError(f"Locale template is missing: {section}.{key}")
+    try:
+        return template.format(**values)
+    except (KeyError, IndexError, ValueError) as exc:
+        raise RecomposerError(f"Invalid locale template {section}.{key}: {exc}") from exc
 
 
 def write_json(data: Dict[str, Any], path: Path) -> None:
@@ -546,6 +709,7 @@ def create_manifest_draft(
         raise RecomposerError(
             "job_id must contain 1-128 letters, digits, dots, underscores, or hyphens"
         )
+    default_locale, _ = load_locale_bundle()
     uncertainties: List[Dict[str, Any]] = [
         {
             "id": "semantic-inspection-required",
@@ -598,6 +762,7 @@ def create_manifest_draft(
             "outcome_contract": "audited_content",
             "direction_mode": "diverge_then_select",
             "direction_count": 6,
+            "presentation_locale": default_locale,
         },
         "content": {
             "type": "mixed_unknown",
@@ -629,6 +794,13 @@ def create_manifest_draft(
             "protected_regions": [],
             "forbidden_inference": [],
             "source_features_to_avoid": [],
+        },
+        "risk": {
+            "assessment": "unreviewed",
+            "signals": [],
+            "notes": [
+                "Complete semantic risk review before routing or rendering."
+            ],
         },
         "render": {
             "preferred_mode": "auto",
@@ -716,6 +888,49 @@ def validate_manifest(manifest: Dict[str, Any]) -> Dict[str, Any]:
         or not 1 <= direction_count <= 12
     ):
         errors.append("intent.direction_count must be an integer from 1 to 12")
+    presentation_locale = intent.get("presentation_locale")
+    if not isinstance(presentation_locale, str) or not presentation_locale.strip():
+        errors.append("intent.presentation_locale must be a non-empty string")
+    else:
+        try:
+            load_locale_bundle(presentation_locale)
+        except RecomposerError as exc:
+            errors.append(f"intent.presentation_locale is invalid: {exc}")
+
+    risk = _required_object(manifest, "risk", errors)
+    risk_assessment = risk.get("assessment")
+    if risk_assessment not in RISK_ASSESSMENTS:
+        errors.append(f"risk.assessment must be one of {sorted(RISK_ASSESSMENTS)}")
+    elif risk_assessment == "unreviewed":
+        errors.append(
+            "risk.assessment must be model_reviewed or human_verified before routing"
+        )
+    risk_signals = _required_list(risk, "signals", errors)
+    risk_signal_ids: set[str] = set()
+    for index, signal in enumerate(risk_signals):
+        prefix = f"risk.signals[{index}]"
+        if not isinstance(signal, dict):
+            errors.append(f"{prefix} must be an object")
+            continue
+        signal_id = signal.get("id")
+        if not isinstance(signal_id, str) or not signal_id.strip():
+            errors.append(f"{prefix}.id must be a non-empty stable semantic id")
+        elif signal_id in risk_signal_ids:
+            errors.append(f"Duplicate risk signal id: {signal_id}")
+        else:
+            risk_signal_ids.add(signal_id)
+        if signal.get("minimum_fidelity_tier") not in FIDELITY_TIERS:
+            errors.append(
+                f"{prefix}.minimum_fidelity_tier must be one of {sorted(FIDELITY_TIERS)}"
+            )
+        if signal.get("evidence") not in EVIDENCE_TYPES:
+            errors.append(f"{prefix}.evidence must be one of {sorted(EVIDENCE_TYPES)}")
+        if signal.get("verified") is not True:
+            errors.append(f"{prefix}.verified must be true before routing")
+    risk_notes = _required_list(risk, "notes", errors)
+    for index, note in enumerate(risk_notes):
+        if not isinstance(note, str) or not note.strip():
+            errors.append(f"risk.notes[{index}] must be a non-empty string")
 
     content = _required_object(manifest, "content", errors)
     if content.get("type") not in CONTENT_TYPES:
@@ -1229,6 +1444,7 @@ def validate_manifest(manifest: Dict[str, Any]) -> Dict[str, Any]:
         "content_contract_mode": contract_mode,
         "protected_region_count": len(protected_regions),
         "asset_metadata_count": asset_metadata_count,
+        "risk_signal_count": len(risk_signals),
         "blocking_uncertainty_count": sum(
             1 for item in uncertainties if isinstance(item, dict) and item.get("severity") == "blocking"
         ),
@@ -1236,53 +1452,47 @@ def validate_manifest(manifest: Dict[str, Any]) -> Dict[str, Any]:
     return {"valid": not errors, "errors": errors, "warnings": warnings, "stats": stats}
 
 
-def _risk_text(manifest: Dict[str, Any]) -> str:
-    pieces: List[str] = []
-    pieces.append(str(manifest.get("content", {}).get("type", "")))
-    for item in manifest.get("content", {}).get("objects", []):
-        if isinstance(item, dict):
-            pieces.extend([str(item.get("type", "")), str(item.get("label", ""))])
-    for region in manifest.get("preservation", {}).get("protected_regions", []):
-        if isinstance(region, dict):
-            pieces.append(str(region.get("reason", "")))
-    return " ".join(pieces).lower()
+def _highest_declared_risk_tier(manifest: Dict[str, Any]) -> str:
+    tier = "F0"
+    signals = manifest.get("risk", {}).get("signals", [])
+    if not isinstance(signals, list):
+        return tier
+    for signal in signals:
+        if not isinstance(signal, dict) or signal.get("verified") is not True:
+            continue
+        candidate = signal.get("minimum_fidelity_tier")
+        if candidate in FIDELITY_TIER_ORDER and (
+            FIDELITY_TIER_ORDER[candidate] > FIDELITY_TIER_ORDER[tier]
+        ):
+            tier = candidate
+    return tier
+
+
+def _maximum_fidelity_tier(*tiers: str) -> str:
+    valid = [tier for tier in tiers if tier in FIDELITY_TIER_ORDER]
+    return max(valid or ["F0"], key=FIDELITY_TIER_ORDER.__getitem__)
 
 
 def choose_fidelity_tier(manifest: Dict[str, Any]) -> str:
-    risk = _risk_text(manifest)
-    evidence_markers = {
-        "evidence",
-        "testimonial",
-        "before/after",
-        "before-after",
-        "face",
-        "skin",
-        "identity",
-        "证据",
-        "见证",
-        "前后对比",
-        "人脸",
-        "皮肤",
-    }
-    if manifest.get("content", {}).get("type") == "evidence_comparison" or any(
-        marker in risk for marker in evidence_markers
-    ):
-        return "F3"
+    declared_tier = _highest_declared_risk_tier(manifest)
     content = manifest.get("content", {})
-    intent = manifest.get("intent", {})
-    if (
+    structural_tier = "F0"
+    if content.get("type") == "evidence_comparison":
+        structural_tier = "F3"
+    elif (
         content.get("text_density") == "high"
-        or content.get("type") in {"dense_infographic", "screenshot_ui", "multi_product_comparison"}
-        or intent.get("exact_text_required")
+        or content.get("type")
+        in {"dense_infographic", "screenshot_ui", "multi_product_comparison"}
+        or manifest.get("intent", {}).get("exact_text_required")
     ):
-        return "F2"
-    if manifest.get("preservation", {}).get("protected_regions") or any(
+        structural_tier = "F2"
+    elif manifest.get("preservation", {}).get("protected_regions") or any(
         item.get("preserve") == "lock_pixels"
         for item in content.get("objects", [])
         if isinstance(item, dict)
     ):
-        return "F1"
-    return "F0"
+        structural_tier = "F1"
+    return _maximum_fidelity_tier(declared_tier, structural_tier)
 
 
 def choose_renderer(manifest: Dict[str, Any]) -> str:
@@ -2044,35 +2254,61 @@ def _wireframe_for_candidate(candidate: Dict[str, Any]) -> str:
 
 
 def _direction_presentation(
-    candidate: Dict[str, Any], manifest: Dict[str, Any]
+    candidate: Dict[str, Any],
+    manifest: Dict[str, Any],
+    locale_bundle: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, str]:
-    """Build one Chinese, user-facing direction without exposing catalog prose."""
-    direction_name, composition = STYLE_REFERENCE_DIRECTION_PRESENTATIONS.get(
+    """Build localized public copy without changing the semantic route."""
+    bundle = locale_bundle
+    if bundle is None:
+        _, bundle = load_locale_bundle(
+            manifest.get("intent", {}).get("presentation_locale")
+        )
+    presentation_config = bundle["presentation"]
+    direction_record = bundle["direction_families"].get(
         candidate.get("direction_family"),
-        ("结构重组", "重新组织画面层级、动线和留白，让主体关系更清晰"),
+        presentation_config.get("fallback_direction"),
     )
     visual = candidate.get("visual_system", {})
-    visual_name, visual_treatment = STYLE_REFERENCE_VISUAL_PRESENTATIONS.get(
+    visual_record = bundle["visual_systems"].get(
         visual.get("visual_family") if isinstance(visual, dict) else None,
-        ("统一质感", "使用统一的色彩、材质和光影完成整张画面"),
+        presentation_config.get("fallback_visual"),
     )
+    if not isinstance(direction_record, dict) or not isinstance(visual_record, dict):
+        raise RecomposerError("Locale bundle has invalid direction or visual fallbacks")
+    direction_name = direction_record.get("title")
+    composition = direction_record.get("composition")
+    visual_name = visual_record.get("title")
+    visual_treatment = visual_record.get("treatment")
+    if not all(
+        isinstance(value, str) and value
+        for value in (direction_name, composition, visual_name, visual_treatment)
+    ):
+        raise RecomposerError("Locale direction and visual records require non-empty copy")
     outcome_contract = manifest.get("intent", {}).get(
         "outcome_contract", "audited_content"
     )
-    if _uses_style_reference(manifest):
-        content_boundary = (
-            "原图只提供非事实性的视觉参考；不得带入原图品牌、产品、人物、文字、数字、"
-            "功效表述或事实关联"
+    boundary_key = "style_reference" if _uses_style_reference(manifest) else outcome_contract
+    boundaries = presentation_config.get("content_boundaries", {})
+    content_boundary = boundaries.get(boundary_key)
+    title_separator = presentation_config.get("title_separator")
+    description_separator = presentation_config.get("description_separator")
+    description_suffix = presentation_config.get("description_suffix")
+    if not all(
+        isinstance(value, str) and value
+        for value in (
+            content_boundary,
+            title_separator,
+            description_separator,
+            description_suffix,
         )
-    elif outcome_contract == "pixel_fidelity":
-        content_boundary = "保留已确认的信息、对应关系和受保护像素区域，只重构允许变化的部分"
-    elif outcome_contract == "audited_content":
-        content_boundary = "保留已确认的文字、对象和对应关系，不新增未经确认的事实内容"
-    else:
-        content_boundary = "以用户要求为主，原图语义只作辅助，不承担逐字或逐像素保真"
+    ):
+        raise RecomposerError("Locale presentation separators or content boundary are missing")
     return {
-        "title": f"{direction_name} · {visual_name}",
-        "description": f"{composition}；{visual_treatment}。",
+        "title": f"{direction_name}{title_separator}{visual_name}",
+        "description": (
+            f"{composition}{description_separator}{visual_treatment}{description_suffix}"
+        ),
         "composition": composition,
         "visual_treatment": visual_treatment,
         "content_boundary": content_boundary,
@@ -2083,8 +2319,11 @@ def _attach_direction_presentations(
     shortlist: List[Dict[str, Any]], manifest: Dict[str, Any]
 ) -> None:
     """Attach the public direction copy and isolate style-only jobs from factual hints."""
+    _, bundle = load_locale_bundle(
+        manifest.get("intent", {}).get("presentation_locale")
+    )
     for candidate in shortlist:
-        presentation = _direction_presentation(candidate, manifest)
+        presentation = _direction_presentation(candidate, manifest, bundle)
         candidate["presentation"] = presentation
         if not _uses_style_reference(manifest):
             continue
@@ -2095,7 +2334,15 @@ def _attach_direction_presentations(
         candidate["wireframe"] = presentation["composition"]
         visual = candidate.get("visual_system")
         if isinstance(visual, dict):
-            visual["title"] = presentation["title"].split(" · ", 1)[-1]
+            visual_record = bundle["visual_systems"].get(
+                visual.get("visual_family"),
+                bundle["presentation"].get("fallback_visual"),
+            )
+            if not isinstance(visual_record, dict) or not isinstance(
+                visual_record.get("title"), str
+            ):
+                raise RecomposerError("Locale visual record requires a title")
+            visual["title"] = visual_record["title"]
             visual["prompt_hints"] = [presentation["visual_treatment"]]
             visual["negative_hints"] = []
             visual["reasons"] = [presentation["visual_treatment"]]
@@ -2203,6 +2450,7 @@ def route_fingerprint(route: Dict[str, Any]) -> str:
         "job_id": route.get("job_id"),
         "renderer": route.get("renderer"),
         "outcome_contract": route.get("outcome_contract"),
+        "presentation_locale": route.get("presentation_locale"),
         "target_aspect": route.get("target_aspect"),
         "direction_mode": route.get("direction_mode"),
         "direction_count_requested": route.get("direction_count_requested"),
@@ -2306,6 +2554,9 @@ def build_route_decision(
     if not validation["valid"]:
         raise RecomposerError("Manifest validation failed:\n- " + "\n- ".join(validation["errors"]))
     renderer = choose_renderer(manifest)
+    presentation_locale, _ = load_locale_bundle(
+        manifest.get("intent", {}).get("presentation_locale")
+    )
     if renderer == "model-led" and choose_fidelity_tier(manifest) == "F3":
         raise RecomposerError(
             "F3 evidence or identity content cannot use model-led rendering; use locked-composite"
@@ -2381,6 +2632,7 @@ def build_route_decision(
         "outcome_contract": manifest.get("intent", {}).get(
             "outcome_contract", "audited_content"
         ),
+        "presentation_locale": presentation_locale,
         "target_delta": manifest["intent"]["target_delta"],
         "target_aspect": parse_target_aspect(
             manifest["intent"].get("target_aspect"), manifest.get("source", {}).get("aspect_class", "portrait")
@@ -2884,48 +3136,71 @@ def _compile_style_reference_prompt(
 ) -> str:
     """Compile a clean generation brief when the source has no factual authority."""
     presentation = layout_spec["presentation"]
+    _, bundle = load_locale_bundle(
+        manifest.get("intent", {}).get("presentation_locale")
+    )
     lines = [
-        "# 图像渲染合同",
+        _locale_template(bundle, "style_reference_prompt", "heading"),
         "",
-        f"用户任务：{manifest['intent']['output_usage']}",
-        (
-            "输入图说明：图 1 仅用于参考非事实性的构图节奏、色彩氛围、材质语言和视觉风格；"
-            "它不是内容、事实或可复用素材的来源。"
+        _locale_template(
+            bundle,
+            "style_reference_prompt",
+            "task_line",
+            output_usage=manifest["intent"]["output_usage"],
         ),
-        (
-            "内容隔离：不得复制或重建原图中的品牌、产品、人物身份、可见文字、数字、"
-            "医疗或功效表述及其事实关联。"
-        ),
-        (
-            "生成范围：只生成用户明确要求的新主题和新内容；除非用户任务明确要求，"
-            "画面中不得出现可读文字。"
-        ),
+        _locale_template(bundle, "style_reference_prompt", "source_scope"),
+        _locale_template(bundle, "style_reference_prompt", "content_isolation"),
+        _locale_template(bundle, "style_reference_prompt", "generation_scope"),
         "",
-        "# 已选方向",
+        _locale_template(bundle, "style_reference_prompt", "direction_heading"),
         "",
-        f"画布比例：{route['target_aspect']}",
-        f"方向名称：{presentation['title']}",
-        f"构图方式：{presentation['composition']}",
-        f"视觉处理：{presentation['visual_treatment']}",
-        f"内容边界：{presentation['content_boundary']}",
-        (
-            "执行要求：只执行这一条已由用户选择的方向，不混合其他候选方向，"
-            "不重新选路，不复刻原图内容。"
+        _locale_template(
+            bundle,
+            "style_reference_prompt",
+            "aspect_line",
+            target_aspect=route["target_aspect"],
         ),
+        _locale_template(
+            bundle, "style_reference_prompt", "title_line", title=presentation["title"]
+        ),
+        _locale_template(
+            bundle,
+            "style_reference_prompt",
+            "composition_line",
+            composition=presentation["composition"],
+        ),
+        _locale_template(
+            bundle,
+            "style_reference_prompt",
+            "visual_line",
+            visual_treatment=presentation["visual_treatment"],
+        ),
+        _locale_template(
+            bundle,
+            "style_reference_prompt",
+            "boundary_line",
+            content_boundary=presentation["content_boundary"],
+        ),
+        _locale_template(bundle, "style_reference_prompt", "execution"),
     ]
     exclusions = [
         *manifest["preservation"].get("source_features_to_avoid", []),
         *manifest["preservation"].get("forbidden_inference", []),
     ]
     if exclusions:
-        lines.append("禁止项：" + "；".join(exclusions))
+        prompt_config = bundle["style_reference_prompt"]
+        prefix = prompt_config.get("exclusions_prefix")
+        separator = prompt_config.get("list_separator")
+        if not isinstance(prefix, str) or not isinstance(separator, str):
+            raise RecomposerError("Locale exclusion prefix or separator is missing")
+        lines.append(prefix + separator.join(exclusions))
     lines.extend(
         [
             "",
-            "# 输出",
+            _locale_template(bundle, "style_reference_prompt", "output_heading"),
             "",
-            "返回一张完成度高、可直接展示的新图片，不要返回线框图、空模板或素材拼贴。",
-            "生成后检查：已选方向清晰可见，且没有带入任何原图事实内容。",
+            _locale_template(bundle, "style_reference_prompt", "output_intent"),
+            _locale_template(bundle, "style_reference_prompt", "final_check"),
         ]
     )
     return "\n".join(lines) + "\n"
@@ -3222,15 +3497,28 @@ def compile_retry_guide(
 ) -> str:
     renderer = route["renderer"]
     if _uses_style_reference(manifest):
+        _, bundle = load_locale_bundle(
+            manifest.get("intent", {}).get("presentation_locale")
+        )
         return "\n".join(
             [
-                "# 定向修复说明",
+                _locale_template(bundle, "style_reference_retry", "heading"),
                 "",
-                f"渲染器：{renderer}",
-                f"已选策略：{layout_spec['strategy']['id']}",
-                "每次只修复一个明确缺陷，并保持已选方向、构图骨架和视觉系统不变。",
-                "修复时仍只把原图作为非事实性的视觉参考，不得重新引入原图品牌、产品、人物身份、文字、数字、表述或事实关联。",
-                "不得自动重试；每一次额外的图像模型调用都需要新的人工授权。",
+                _locale_template(
+                    bundle,
+                    "style_reference_retry",
+                    "renderer_line",
+                    renderer=renderer,
+                ),
+                _locale_template(
+                    bundle,
+                    "style_reference_retry",
+                    "strategy_line",
+                    strategy_id=layout_spec["strategy"]["id"],
+                ),
+                _locale_template(bundle, "style_reference_retry", "single_defect"),
+                _locale_template(bundle, "style_reference_retry", "content_isolation"),
+                _locale_template(bundle, "style_reference_retry", "authorization"),
             ]
         ) + "\n"
     lines = [
@@ -3639,17 +3927,16 @@ def record_render_attempt(
 
 
 def compile_direction_board(route: Dict[str, Any]) -> str:
-    """Render the shortlist as concise Chinese choices for human selection."""
-    recommendation_labels = {
-        "best_overall": "最推荐",
-        "boldest_change": "变化最大",
-        "safest_production": "稳妥易执行",
-        "alternative": "备选",
-    }
+    """Render the shortlist as concise localized choices for human selection."""
+    _, bundle = load_locale_bundle(route.get("presentation_locale"))
+    board = bundle["direction_board"]
+    recommendation_labels = board.get("recommendation_labels")
+    if not isinstance(recommendation_labels, dict):
+        raise RecomposerError("Locale direction board recommendation labels are missing")
     lines = [
-        "# 重构方向",
+        _locale_template(bundle, "direction_board", "heading"),
         "",
-        "请选择一个方向继续。系统不会自动替你选择，也不会混合多个方向。",
+        _locale_template(bundle, "direction_board", "instruction"),
         "",
     ]
     for candidate in route.get("candidates", []):
@@ -3658,23 +3945,49 @@ def compile_direction_board(route: Dict[str, Any]) -> str:
         presentation = candidate.get("presentation", {})
         if not isinstance(presentation, dict):
             presentation = {}
-        title = presentation.get("title", "结构重组")
-        description = presentation.get(
-            "description", "重新组织画面层级、动线和视觉质感。"
-        )
+        title = presentation.get("title", board.get("fallback_title"))
+        description = presentation.get("description", board.get("fallback_description"))
         content_boundary = presentation.get(
-            "content_boundary", "只处理用户已确认允许变化的内容。"
+            "content_boundary", board.get("fallback_boundary")
         )
+        if not all(
+            isinstance(value, str) and value
+            for value in (title, description, content_boundary)
+        ):
+            raise RecomposerError("Locale direction board fallbacks are incomplete")
         recommendation = recommendation_labels.get(
-            candidate.get("recommendation"), "备选"
+            candidate.get("recommendation"), board.get("fallback_recommendation")
         )
+        if not isinstance(recommendation, str) or not recommendation:
+            raise RecomposerError("Locale direction board fallback recommendation is missing")
         lines.extend(
             [
-                f"## 方向 {candidate.get('rank', '?')}：{title}",
+                _locale_template(
+                    bundle,
+                    "direction_board",
+                    "direction_heading",
+                    rank=candidate.get("rank", "?"),
+                    title=title,
+                ),
                 "",
-                f"- 推荐标签：{recommendation}",
-                f"- 方案说明：{description}",
-                f"- 内容边界：{content_boundary}",
+                _locale_template(
+                    bundle,
+                    "direction_board",
+                    "recommendation_line",
+                    recommendation=recommendation,
+                ),
+                _locale_template(
+                    bundle,
+                    "direction_board",
+                    "description_line",
+                    description=description,
+                ),
+                _locale_template(
+                    bundle,
+                    "direction_board",
+                    "boundary_line",
+                    content_boundary=content_boundary,
+                ),
                 "",
             ]
         )

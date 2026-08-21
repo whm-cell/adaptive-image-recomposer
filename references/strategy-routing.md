@@ -20,12 +20,13 @@ This order prevents three common errors: treating style as layout, allowing one 
 ## Stage A: hard gates
 
 1. Stop when source completeness fails.
-2. Reject `model-led` for protected regions, pixel-locked objects, or F3 evidence.
-3. Classify every critical object's alpha, edge, source-background, and isolation readiness. Require semantic resynthesis, a clean cutout, an approved edge-band treatment, or a declared blocker.
-4. Measure the immutable content load, then reject kernels whose hard limits are below the actual item count, required text-node count, total required characters, or largest group text load. Density labels alone are insufficient.
-5. Reject kernels that cannot support the renderer, text density, target aspect, or available asset treatment.
-6. For `radical`, require both topology and reading-path change plus at least five changed axes.
-7. Reject any kernel whose defining topology directly repeats a forbidden source feature.
+2. Stop while `risk.assessment` is `unreviewed`. Use verified structured risk signals; never classify risk from source words, OCR, labels, or the language of free-form notes.
+3. Reject `model-led` for protected regions, pixel-locked objects, or F3 evidence.
+4. Classify every critical object's alpha, edge, source-background, and isolation readiness. Require semantic resynthesis, a clean cutout, an approved edge-band treatment, or a declared blocker.
+5. Measure the immutable content load, then reject kernels whose hard limits are below the actual item count, required text-node count, total required characters, or largest group text load. Density labels alone are insufficient.
+6. Reject kernels that cannot support the renderer, text density, target aspect, or available asset treatment.
+7. For `radical`, require both topology and reading-path change plus at least five changed axes.
+8. Reject any kernel whose defining topology directly repeats a forbidden source feature.
 
 ## Stage B: compatibility score
 
@@ -62,7 +63,7 @@ The machine route retains the detailed evidence used to compare candidates:
 - asset readiness, text capacity, fidelity, integration, and production risk;
 - visual-system fit.
 
-Each candidate also provides a bounded Chinese `presentation`: title, short explanation, composition summary, visual treatment, and content boundary. That presentation is the only user-facing source of truth. `direction-board.md` may translate `best_overall`, `boldest_change`, and `safest_production` into concise Chinese recommendation labels, but it must omit candidate IDs, catalog labels, metrics, wireframes, and English implementation terms. A host copies every presentation unchanged; it does not ask another model to rewrite the Skill output.
+Each candidate also provides a bounded localized `presentation`: title, short explanation, composition summary, visual treatment, and content boundary. The route is scored entirely from language-neutral IDs and structured fields first; localization is attached afterward and must not influence candidate eligibility, rank, score, fidelity tier, renderer, or recommendation assignment. `direction-board.md` uses the selected locale's recommendation labels while omitting candidate IDs, catalog labels, metrics, wireframes, and internal implementation terms. A host copies every presentation unchanged; it does not ask another model to rewrite the Skill output. See [localization.md](localization.md).
 
 Routing must stop in `AWAITING_HUMAN_SELECTION`. A human chooses a candidate, and the `select` command records the candidate, its visual system, rationale, and route fingerprint. Recommendation labels never authorize automatic selection.
 

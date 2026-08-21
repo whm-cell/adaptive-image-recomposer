@@ -1,0 +1,12 @@
+{
+  "resource_version": "1",
+  "default_locale": "zh-CN",
+  "aliases": {
+    "zh": "zh-CN",
+    "zh-Hans": "zh-CN",
+    "zh-CN": "zh-CN"
+  },
+  "locales": {
+    "zh-CN": "zh-CN.json"
+  }
+}

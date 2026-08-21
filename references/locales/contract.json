@@ -1,0 +1,83 @@
+{
+  "contract_version": "1",
+  "required_string_paths": [
+    "resource_version",
+    "locale",
+    "presentation.fallback_direction.title",
+    "presentation.fallback_direction.composition",
+    "presentation.fallback_visual.title",
+    "presentation.fallback_visual.treatment",
+    "presentation.content_boundaries.style_reference",
+    "presentation.content_boundaries.pixel_fidelity",
+    "presentation.content_boundaries.audited_content",
+    "presentation.content_boundaries.creative_reconstruction",
+    "presentation.title_separator",
+    "presentation.description_separator",
+    "presentation.description_suffix",
+    "direction_board.heading",
+    "direction_board.instruction",
+    "direction_board.direction_heading",
+    "direction_board.recommendation_line",
+    "direction_board.description_line",
+    "direction_board.boundary_line",
+    "direction_board.fallback_title",
+    "direction_board.fallback_description",
+    "direction_board.fallback_boundary",
+    "direction_board.recommendation_labels.best_overall",
+    "direction_board.recommendation_labels.boldest_change",
+    "direction_board.recommendation_labels.safest_production",
+    "direction_board.recommendation_labels.alternative",
+    "direction_board.fallback_recommendation",
+    "style_reference_prompt.heading",
+    "style_reference_prompt.task_line",
+    "style_reference_prompt.source_scope",
+    "style_reference_prompt.content_isolation",
+    "style_reference_prompt.generation_scope",
+    "style_reference_prompt.direction_heading",
+    "style_reference_prompt.aspect_line",
+    "style_reference_prompt.title_line",
+    "style_reference_prompt.composition_line",
+    "style_reference_prompt.visual_line",
+    "style_reference_prompt.boundary_line",
+    "style_reference_prompt.execution",
+    "style_reference_prompt.exclusions_prefix",
+    "style_reference_prompt.list_separator",
+    "style_reference_prompt.output_heading",
+    "style_reference_prompt.output_intent",
+    "style_reference_prompt.final_check",
+    "style_reference_retry.heading",
+    "style_reference_retry.renderer_line",
+    "style_reference_retry.strategy_line",
+    "style_reference_retry.single_defect",
+    "style_reference_retry.content_isolation",
+    "style_reference_retry.authorization"
+  ],
+  "record_sections": {
+    "direction_families": ["title", "composition"],
+    "visual_systems": ["title", "treatment"]
+  },
+  "catalog_record_bindings": {
+    "direction_families": {
+      "collection": "families",
+      "id_field": "id"
+    },
+    "visual_systems": {
+      "collection": "visual_systems",
+      "id_field": "visual_family"
+    }
+  },
+  "template_placeholders": {
+    "direction_board.direction_heading": ["rank", "title"],
+    "direction_board.recommendation_line": ["recommendation"],
+    "direction_board.description_line": ["description"],
+    "direction_board.boundary_line": ["content_boundary"],
+    "style_reference_prompt.task_line": ["output_usage"],
+    "style_reference_prompt.aspect_line": ["target_aspect"],
+    "style_reference_prompt.title_line": ["title"],
+    "style_reference_prompt.composition_line": ["composition"],
+    "style_reference_prompt.visual_line": ["visual_treatment"],
+    "style_reference_prompt.boundary_line": ["content_boundary"],
+    "style_reference_retry.renderer_line": ["renderer"],
+    "style_reference_retry.strategy_line": ["strategy_id"]
+  }
+}

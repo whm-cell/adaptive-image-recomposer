@@ -17,7 +17,7 @@ Set `verified: true` only after the value is legible or authoritative. Never ver
 
 ```json
 {
-  "schema_version": "0.2",
+  "schema_version": "0.3",
   "job_id": "stable-job-id",
   "source": {
     "path": "/absolute/path/image.png",
@@ -34,7 +34,8 @@ Set `verified: true` only after the value is legible or authoritative. Never ver
     "exact_text_required": true,
     "outcome_contract": "creative_reconstruction",
     "direction_mode": "diverge_then_select",
-    "direction_count": 6
+    "direction_count": 6,
+    "presentation_locale": "zh-CN"
   },
   "content": {
     "type": "multi_product_comparison",
@@ -67,6 +68,18 @@ Set `verified: true` only after the value is legible or authoritative. Never ver
     "forbidden_inference": [],
     "source_features_to_avoid": []
   },
+  "risk": {
+    "assessment": "human_verified",
+    "signals": [
+      {
+        "id": "identity-critical-subject",
+        "minimum_fidelity_tier": "F3",
+        "evidence": "visual",
+        "verified": true
+      }
+    ],
+    "notes": []
+  },
   "render": {
     "preferred_mode": "auto",
     "iteration_mode": "edit_latest_result"
@@ -74,6 +87,18 @@ Set `verified: true` only after the value is legible or authoritative. Never ver
   "uncertainties": []
 }
 ```
+
+## Presentation locale
+
+`intent.presentation_locale` chooses only the human-facing direction board and style-reference prompt language. It must resolve through `references/locales/index.json`. Locale selection must not change candidate eligibility, scores, fidelity tier, renderer, capacity, or recommendations. See [localization.md](localization.md).
+
+## Structured risk assessment
+
+Complete `risk` before routing. `assessment` is `model_reviewed` or `human_verified`; the machine draft starts as `unreviewed` and cannot route until the image has been semantically inspected.
+
+Each observed risk signal has a stable semantic `id`, the minimum required tier (`F0`–`F3`), evidence provenance, and `verified: true`. The highest declared verified tier participates in renderer selection. Visible words, OCR strings, object labels, and the language used to describe a region never determine risk by themselves. Record the observation explicitly instead of relying on keyword matching.
+
+An empty `signals` list is valid only after the assessment is complete and no additional fidelity risk was observed. Structural facts such as `content.type: evidence_comparison`, exact-copy density, protected regions, and pixel locks still impose their documented minimum tiers independently.
 
 ## Objects
 

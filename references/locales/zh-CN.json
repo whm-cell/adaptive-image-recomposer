@@ -1,0 +1,152 @@
+{
+  "resource_version": "1",
+  "locale": "zh-CN",
+  "direction_families": {
+    "flow-path": {
+      "title": "流线叙事",
+      "composition": "用一条连续的视觉动线串联主体，让视线沿弧线或折线自然推进"
+    },
+    "editorial-hierarchy": {
+      "title": "编辑式主视觉",
+      "composition": "用明确的主次尺度和留白建立杂志式层级，让核心主体先被看见"
+    },
+    "modular-comparison": {
+      "title": "错落模块",
+      "composition": "用大小不一的区块组织画面，避免平均分栏和重复卡片"
+    },
+    "radial-network": {
+      "title": "放射聚焦",
+      "composition": "围绕一个视觉焦点展开层次，让元素由中心向外形成张力"
+    },
+    "diagrammatic-data": {
+      "title": "图解结构",
+      "composition": "用清晰的节点、连线和分区建立秩序，同时保持整体像一张完整海报"
+    },
+    "spatial-stage": {
+      "title": "空间舞台",
+      "composition": "以前景、中景和背景的景深关系组织主体，形成具有空间感的完整场景"
+    },
+    "typographic-graphic": {
+      "title": "图形张力",
+      "composition": "用大形状、强对比和节奏变化构成画面骨架，不依赖额外文字"
+    },
+    "tactile-organic": {
+      "title": "有机材质",
+      "composition": "用柔和曲线、自然留白和触感材质构成更松弛的视觉节奏"
+    }
+  },
+  "visual_systems": {
+    "precision-modernist": {
+      "title": "精密现代",
+      "treatment": "使用克制配色、清晰边界和精确留白"
+    },
+    "printed-editorial": {
+      "title": "温暖纸张",
+      "treatment": "使用温暖纸张、细腻印刷纹理和编辑感层次"
+    },
+    "luxury-material": {
+      "title": "深色金属",
+      "treatment": "使用深色基调、金属细节和受控高光"
+    },
+    "bold-pop-graphic": {
+      "title": "鲜明波普",
+      "treatment": "使用高饱和对比、粗线条和活泼图形节奏"
+    },
+    "riso-print": {
+      "title": "复古孔版",
+      "treatment": "使用有限色板、颗粒网点和错版印刷质感"
+    },
+    "luminous-translucency": {
+      "title": "轻透光感",
+      "treatment": "使用半透明层次、柔光和通透色彩叠加"
+    },
+    "graphic-ink": {
+      "title": "黑白墨线",
+      "treatment": "使用鲜明黑白关系、墨线和手工印刷质感"
+    },
+    "soft-natural": {
+      "title": "柔和自然",
+      "treatment": "使用低饱和自然色、柔和光线和有机材质"
+    },
+    "technical-diagram": {
+      "title": "技术蓝图",
+      "treatment": "使用蓝图式线条、精确节点和理性空间"
+    },
+    "quiet-exhibition": {
+      "title": "安静展陈",
+      "treatment": "使用中性色、宽松留白和展览式聚焦"
+    },
+    "raw-structural": {
+      "title": "粗粝结构",
+      "treatment": "使用硬朗边框、直接对比和未经修饰的结构感"
+    },
+    "tactile-3d": {
+      "title": "柔软立体",
+      "treatment": "使用圆润体积、柔软材质和轻盈阴影"
+    }
+  },
+  "presentation": {
+    "fallback_direction": {
+      "title": "结构重组",
+      "composition": "重新组织画面层级、动线和留白，让主体关系更清晰"
+    },
+    "fallback_visual": {
+      "title": "统一质感",
+      "treatment": "使用统一的色彩、材质和光影完成整张画面"
+    },
+    "content_boundaries": {
+      "style_reference": "原图只提供非事实性的视觉参考；不得带入原图品牌、产品、人物、文字、数字、功效表述或事实关联",
+      "pixel_fidelity": "保留已确认的信息、对应关系和受保护像素区域，只重构允许变化的部分",
+      "audited_content": "保留已确认的文字、对象和对应关系，不新增未经确认的事实内容",
+      "creative_reconstruction": "以用户要求为主，原图语义只作辅助，不承担逐字或逐像素保真"
+    },
+    "title_separator": " · ",
+    "description_separator": "；",
+    "description_suffix": "。"
+  },
+  "direction_board": {
+    "heading": "# 重构方向",
+    "instruction": "请选择一个方向继续。系统不会自动替你选择，也不会混合多个方向。",
+    "direction_heading": "## 方向 {rank}：{title}",
+    "recommendation_line": "- 推荐标签：{recommendation}",
+    "description_line": "- 方案说明：{description}",
+    "boundary_line": "- 内容边界：{content_boundary}",
+    "fallback_title": "结构重组",
+    "fallback_description": "重新组织画面层级、动线和视觉质感。",
+    "fallback_boundary": "只处理用户已确认允许变化的内容。",
+    "recommendation_labels": {
+      "best_overall": "最推荐",
+      "boldest_change": "变化最大",
+      "safest_production": "稳妥易执行",
+      "alternative": "备选"
+    },
+    "fallback_recommendation": "备选"
+  },
+  "style_reference_prompt": {
+    "heading": "# 图像渲染合同",
+    "task_line": "用户任务：{output_usage}",
+    "source_scope": "输入图说明：图 1 仅用于参考非事实性的构图节奏、色彩氛围、材质语言和视觉风格；它不是内容、事实或可复用素材的来源。",
+    "content_isolation": "内容隔离：不得复制或重建原图中的品牌、产品、人物身份、可见文字、数字、医疗或功效表述及其事实关联。",
+    "generation_scope": "生成范围：只生成用户明确要求的新主题和新内容；除非用户任务明确要求，画面中不得出现可读文字。",
+    "direction_heading": "# 已选方向",
+    "aspect_line": "画布比例：{target_aspect}",
+    "title_line": "方向名称：{title}",
+    "composition_line": "构图方式：{composition}",
+    "visual_line": "视觉处理：{visual_treatment}",
+    "boundary_line": "内容边界：{content_boundary}",
+    "execution": "执行要求：只执行这一条已由用户选择的方向，不混合其他候选方向，不重新选路，不复刻原图内容。",
+    "exclusions_prefix": "禁止项：",
+    "list_separator": "；",
+    "output_heading": "# 输出",
+    "output_intent": "返回一张完成度高、可直接展示的新图片，不要返回线框图、空模板或素材拼贴。",
+    "final_check": "生成后检查：已选方向清晰可见，且没有带入任何原图事实内容。"
+  },
+  "style_reference_retry": {
+    "heading": "# 定向修复说明",
+    "renderer_line": "渲染器：{renderer}",
+    "strategy_line": "已选策略：{strategy_id}",
+    "single_defect": "每次只修复一个明确缺陷，并保持已选方向、构图骨架和视觉系统不变。",
+    "content_isolation": "修复时仍只把原图作为非事实性的视觉参考，不得重新引入原图品牌、产品、人物身份、文字、数字、表述或事实关联。",
+    "authorization": "不得自动重试；每一次额外的图像模型调用都需要新的人工授权。"
+  }
+}

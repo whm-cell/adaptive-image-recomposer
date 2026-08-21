@@ -27,6 +27,8 @@ This budget outranks aesthetics. The renderer must not delete, summarize, merge,
 
 Compile exactly one human-selected lane from `direction-board.md`. Validate the selection record against the route fingerprint before compiling. Never blend the shortlisted kernels, list the whole strategy library, or treat a visual system as a replacement for structural change.
 
+Human-facing copy for the direction board and content-isolated style-reference prompt comes from the locale selected in the manifest. Locale resources interpolate only validated fields into bounded templates. They do not contain scoring weights, renderer rules, strategy compatibility, content facts, or risk detection. Changing locale must leave the semantic route unchanged; see [localization.md](localization.md).
+
 A high-signal lane description has this form:
 
 > Use the selected topology as the single organizing gesture; make its reading path explicit; keep each content group indivisible; apply the paired material and typographic system; suppress the named source topology and containers.

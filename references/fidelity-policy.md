@@ -21,16 +21,19 @@ Choose the outcome contract before the renderer. Fidelity risk and creative ambi
 | F1 asset sensitive | product pack, bottle, logo-bearing object | choose semantic redraw or locked source explicitly |
 | F0 semantic | illustration, texture, generic scene | preserve meaning and user constraints |
 
+Risk routing is structural, not lexical. Complete `risk.assessment`, then record each observed risk as a verified `risk.signals[]` entry with a stable semantic ID and `minimum_fidelity_tier`. The core takes the highest declared verified tier together with structural minimums from `content.type`, exact-copy density, protected regions, and pixel locks. It never infers a fidelity tier from Chinese, English, or other words appearing in labels, OCR, or free-form notes.
+
 Use the highest tier present, but do not let the tier silently choose the outcome contract. Dense exact-copy or multi-product F2 work uses hybrid by default because the renderer must preserve a closed content budget. A lower-density creative F2 result may still be attempted with `model-led`; it becomes production-ready only after bidirectional text, object-count, and association checks pass.
 
 ## Hard gates
 
-1. F3 content never uses `model-led`.
-2. `model-led` is incompatible with `lock_pixels` objects or protected regions. Change the contract or use an independently auditable source layer inside the jointly planned composition.
-3. Exact-copy and multi-product jobs require a closed visible-text whitelist, exact object cardinalities, and declared group schemas. A visual review cannot replace these gates.
-4. Blocking uncertainties stop the workflow before a provider request is invoked. They cannot cancel an in-flight request or suppress an artifact that the provider already returned.
-5. Unreadable source microcopy must remain absent or visually non-readable; it must not be invented.
-6. A flattened protected crop is not ready for seamless insertion until its silhouette and edge band can be isolated without changing protected core pixels. Otherwise use an explicit frame or stop for a cleaner asset.
+1. An `unreviewed` risk assessment stops routing; risk classification must happen before spending a provider call.
+2. F3 content never uses `model-led`.
+3. `model-led` is incompatible with `lock_pixels` objects or protected regions. Change the contract or use an independently auditable source layer inside the jointly planned composition.
+4. Exact-copy and multi-product jobs require a closed visible-text whitelist, exact object cardinalities, and declared group schemas. A visual review cannot replace these gates.
+5. Blocking uncertainties stop the workflow before a provider request is invoked. They cannot cancel an in-flight request or suppress an artifact that the provider already returned.
+6. Unreadable source microcopy must remain absent or visually non-readable; it must not be invented.
+7. A flattened protected crop is not ready for seamless insertion until its silhouette and edge band can be isolated without changing protected core pixels. Otherwise use an explicit frame or stop for a cleaner asset.
 
 ## Escalation
 

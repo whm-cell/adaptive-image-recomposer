@@ -1,10 +1,10 @@
 {
   "skill_id": "adaptive-image-recomposer",
-  "skill_version": "0.3.0",
+  "skill_version": "0.4.1",
   "protocol_version": "2",
-  "schema_version": "0.2",
+  "schema_version": "0.3",
   "catalog_version": "0.4",
-  "policy_version": "0.3",
+  "policy_version": "0.4",
   "cli": {
     "entrypoint": "scripts/recompose.py",
     "commands": [
@@ -23,7 +23,7 @@
   "files": [
     {
       "path": "SKILL.md",
-      "sha256": "c4dd29b0858c41108bb76e66f5bd555e917a699338853080a6a393a0d5e88cc3"
+      "sha256": "956a9d5c84c3ab0a9409bc10ff259fae33b1f8a408bf524f10d01fd9a45de1ee"
     },
     {
       "path": "agents/openai.yaml",
@@ -39,11 +39,27 @@
     },
     {
       "path": "references/fidelity-policy.md",
-      "sha256": "12ef25433667efeb2d023945d60d829e0c836e5c24cf2633aaf0ec4cba89713e"
+      "sha256": "9757d0bbb5012cb4f889f084cac2a1206ad5be9401e4bf0080f2560ede601c93"
+    },
+    {
+      "path": "references/localization.md",
+      "sha256": "eeda0583b16fad9160bb0db1df3906e1becf305d7c4d12967dea23c6970ea1c9"
+    },
+    {
+      "path": "references/locales/index.json",
+      "sha256": "451eac1fa6ec41d5aaf81a9812a0d129c6c7c90d3a87fa5523df83c0545a6958"
+    },
+    {
+      "path": "references/locales/contract.json",
+      "sha256": "384afa5c2c8577cf6b318f6f625e75783924378da08ef2e48a55e7b8a32c42be"
+    },
+    {
+      "path": "references/locales/zh-CN.json",
+      "sha256": "34831ce213281e0aa622c8c611a7aed99bfb6a925c4ca570934d0dbf9a732899"
     },
     {
       "path": "references/manifest-schema.md",
-      "sha256": "f0602b4a2b79f2d1d7d64f6b5e7ab5e122dcd3c626d9078ef4646587c2e03891"
+      "sha256": "b060ff9c63a4384f6b7791e60be14d3227317245c2571a287dc4f58638face59"
     },
     {
       "path": "references/model-led-workflow.md",
@@ -51,7 +67,7 @@
     },
     {
       "path": "references/prompt-compiler.md",
-      "sha256": "192bbfc497c21db3e270e208f5aa7311ee20a7f345110efccd91ebc154b6e041"
+      "sha256": "2f04cc7a6684d7bfd7c531bca4cc355ae51bcd3ca4206c94a49ed01bc99ecd24"
     },
     {
       "path": "references/qa.md",
@@ -103,7 +119,7 @@
     },
     {
       "path": "references/strategy-routing.md",
-      "sha256": "e0670e2c3d6bec8cb26119462f3f847a6811e45adfd449d127efb28140c2f999"
+      "sha256": "485c30eb3a30cef2076e0fefd78600572a55dbc05d7c751c371f2f77a908a92c"
     },
     {
       "path": "scripts/recompose.py",
@@ -111,8 +127,8 @@
     },
     {
       "path": "scripts/recomposer_core.py",
-      "sha256": "16c627eb38db0c86609626e41d2f27e6aff2a1f963f434fafd02d37da2a2791d"
+      "sha256": "c1bc9a03430d22776df697b055bab7d989078225c7bf8d3747bb4dd7a9cbd277"
     }
   ],
-  "content_digest": "932aa37cbdda1cbc0e6e7adcb42e1db233f5ad1fc48721a768ea78ff01f17cd4"
+  "content_digest": "6b837be9225a38e2b9a4c76860aab5ccd26cc9ea703107494f49130b0a4042fc"
 }

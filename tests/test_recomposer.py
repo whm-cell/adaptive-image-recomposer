@@ -5,15 +5,19 @@ from __future__ import annotations
 import copy
 import base64
 import json
+import re
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
+
+import recomposer_core as recomposer_core_module  # noqa: E402
 
 from recomposer_core import (  # noqa: E402
     RecomposerError,
@@ -26,9 +30,11 @@ from recomposer_core import (  # noqa: E402
     compare_required_text,
     compare_structured_observations,
     compile_direction_board,
+    choose_fidelity_tier,
     create_manifest_draft,
     load_catalog,
     load_json,
+    load_locale_bundle,
     load_skill_pack,
     record_render_attempt,
     skill_pack_ref,
@@ -158,6 +164,47 @@ class RecomposerTests(unittest.TestCase):
         manifest["render"]["preferred_mode"] = "auto"
         return manifest
 
+    def _pseudo_locale_bundle(self):
+        _, source = load_locale_bundle("zh-CN")
+
+        def translate(value):
+            if isinstance(value, dict):
+                return {key: translate(item) for key, item in value.items()}
+            if isinstance(value, list):
+                return [translate(item) for item in value]
+            if isinstance(value, str):
+                placeholders = re.findall(r"\{[A-Za-z_][A-Za-z0-9_]*\}", value)
+                return "TEST" + "".join(f" {placeholder}" for placeholder in placeholders)
+            return value
+
+        pseudo = translate(source)
+        pseudo["resource_version"] = source["resource_version"]
+        pseudo["locale"] = "xx-TEST"
+        return pseudo
+
+    def _write_pseudo_locale_index(self, directory, bundle):
+        directory = Path(directory)
+        bundle_path = directory / "xx-TEST.json"
+        index_path = directory / "index.json"
+        bundle_path.write_text(
+            json.dumps(bundle, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        index_path.write_text(
+            json.dumps(
+                {
+                    "resource_version": "1",
+                    "default_locale": "xx-TEST",
+                    "aliases": {"xx": "xx-TEST", "xx-TEST": "xx-TEST"},
+                    "locales": {"xx-TEST": "xx-TEST.json"},
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return index_path
+
     def test_fixture_is_valid(self) -> None:
         report = validate_manifest(self.manifest)
         self.assertTrue(report["valid"], report["errors"])
@@ -169,14 +216,52 @@ class RecomposerTests(unittest.TestCase):
         reference = skill_pack_ref(pack)
         self.assertEqual(reference["id"], "adaptive-image-recomposer")
         self.assertEqual(reference["protocol_version"], "2")
-        self.assertEqual(reference["schema_version"], "0.2")
+        self.assertEqual(reference["schema_version"], "0.3")
         self.assertEqual(reference["catalog_version"], "0.4")
-        self.assertEqual(reference["policy_version"], "0.3")
+        self.assertEqual(reference["policy_version"], "0.4")
         controlled = [item["path"] for item in pack["files"]]
         self.assertIn("SKILL.md", controlled)
+        self.assertIn("references/localization.md", controlled)
+        self.assertIn("references/locales/contract.json", controlled)
+        self.assertIn("references/locales/index.json", controlled)
+        self.assertIn("references/locales/zh-CN.json", controlled)
+        self.assertNotIn("references/locales/en-US.json", controlled)
         self.assertIn("references/render-call-policy.md", controlled)
         self.assertIn("scripts/recompose.py", controlled)
         self.assertFalse(any("__pycache__" in path or path.endswith(".pyc") for path in controlled))
+
+    def test_core_scripts_have_no_hardcoded_han_copy(self) -> None:
+        han = re.compile(r"[\u3400-\u9fff]")
+        for script in sorted((ROOT / "scripts").glob("*.py")):
+            self.assertIsNone(han.search(script.read_text(encoding="utf-8")), script)
+
+    def test_production_locale_is_single_source_and_catalog_complete(self) -> None:
+        zh_locale, zh_bundle = load_locale_bundle("zh")
+        self.assertEqual(zh_locale, "zh-CN")
+        self.assertEqual(zh_bundle["locale"], "zh-CN")
+        self.assertEqual(
+            set(zh_bundle["direction_families"]),
+            {family["id"] for family in self.catalog["families"]},
+        )
+        self.assertEqual(
+            set(zh_bundle["visual_systems"]),
+            {system["visual_family"] for system in self.catalog["visual_systems"]},
+        )
+        with self.assertRaisesRegex(RecomposerError, "Unsupported presentation locale"):
+            load_locale_bundle("en")
+
+    def test_locale_contract_rejects_placeholder_drift(self) -> None:
+        pseudo = self._pseudo_locale_bundle()
+        pseudo["direction_board"]["direction_heading"] = "TEST {rank}"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            index_path = self._write_pseudo_locale_index(temp_dir, pseudo)
+            with mock.patch.object(
+                recomposer_core_module,
+                "LOCALE_INDEX_RELATIVE_PATH",
+                index_path,
+            ):
+                with self.assertRaisesRegex(RecomposerError, "placeholders differ"):
+                    load_locale_bundle("xx")
 
     def test_machine_protocol_has_one_json_response(self) -> None:
         result = subprocess.run(
@@ -493,6 +578,128 @@ class RecomposerTests(unittest.TestCase):
             self.assertEqual(asset_plan["summary"]["object_count"], 0)
             self.assertIn("不得自动重试", retry)
 
+    def test_presentation_locale_does_not_change_semantic_routing(self) -> None:
+        zh_manifest = self._style_reference_manifest()
+        pseudo_manifest = copy.deepcopy(zh_manifest)
+        zh_manifest["intent"]["presentation_locale"] = "zh-CN"
+        pseudo_manifest["intent"]["presentation_locale"] = "xx"
+
+        zh_route = build_route_decision(zh_manifest, self.catalog)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            index_path = self._write_pseudo_locale_index(
+                temp_dir, self._pseudo_locale_bundle()
+            )
+            with mock.patch.object(
+                recomposer_core_module,
+                "LOCALE_INDEX_RELATIVE_PATH",
+                index_path,
+            ):
+                pseudo_route = build_route_decision(pseudo_manifest, self.catalog)
+
+        def semantic_projection(route):
+            return {
+                "fidelity_tier": route["fidelity_tier"],
+                "renderer": route["renderer"],
+                "recommendations": route["recommendations"],
+                "candidates": [
+                    {
+                        "id": candidate["id"],
+                        "score": candidate["score"],
+                        "direction_family": candidate["direction_family"],
+                        "topology_family": candidate["topology_family"],
+                        "decision_scores": candidate["decision_scores"],
+                        "recommendation": candidate["recommendation"],
+                        "visual_system_id": candidate["visual_system"]["id"],
+                        "visual_family": candidate["visual_system"]["visual_family"],
+                    }
+                    for candidate in route["candidates"]
+                ],
+            }
+
+        self.assertEqual(
+            semantic_projection(zh_route), semantic_projection(pseudo_route)
+        )
+        self.assertNotEqual(
+            zh_route["candidates"][0]["presentation"]["title"],
+            pseudo_route["candidates"][0]["presentation"]["title"],
+        )
+
+    def test_transient_pseudo_locale_compiles_without_source_copy_leakage(self) -> None:
+        manifest = self._style_reference_manifest()
+        manifest["intent"]["presentation_locale"] = "xx"
+        manifest["intent"]["output_usage"] = (
+            "Create a new abstract poster using only non-factual rhythm and color cues."
+        )
+        manifest["preservation"]["forbidden_inference"] = [
+            "source brand",
+            "source product",
+            "source identity",
+            "source text or numbers",
+            "source claims",
+        ]
+        manifest["preservation"]["source_features_to_avoid"] = [
+            "source factual content"
+        ]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            index_path = self._write_pseudo_locale_index(
+                temp_dir, self._pseudo_locale_bundle()
+            )
+            with mock.patch.object(
+                recomposer_core_module,
+                "LOCALE_INDEX_RELATIVE_PATH",
+                index_path,
+            ):
+                route = build_route_decision(manifest, self.catalog)
+                selection = self._selection(route)
+                outputs = write_compiled_artifacts(
+                    manifest,
+                    route,
+                    selection,
+                    self.catalog,
+                    Path(temp_dir) / "compiled",
+                )
+            board = outputs["direction_board"].read_text(encoding="utf-8")
+            prompt = outputs["prompt"].read_text(encoding="utf-8")
+            retry = outputs["retry"].read_text(encoding="utf-8")
+
+        compiled_copy = "\n".join((board, prompt, retry))
+        self.assertEqual(route["presentation_locale"], "xx-TEST")
+        self.assertIn("TEST", board)
+        self.assertIn("TEST", prompt)
+        self.assertIn("TEST", retry)
+        self.assertIsNone(re.search(r"[\u3400-\u9fff]", compiled_copy))
+
+    def test_fidelity_routing_uses_structured_signals_not_language_words(self) -> None:
+        manifest = self._style_reference_manifest()
+        manifest["risk"]["notes"] = [
+            "人脸 face portrait 顔 are descriptive words, not executable risk signals."
+        ]
+        self.assertEqual(choose_fidelity_tier(manifest), "F0")
+
+        manifest["risk"]["signals"] = [
+            {
+                "id": "identity-critical-subject",
+                "minimum_fidelity_tier": "F3",
+                "evidence": "visual",
+                "verified": True,
+            }
+        ]
+        self.assertTrue(validate_manifest(manifest)["valid"])
+        self.assertEqual(choose_fidelity_tier(manifest), "F3")
+
+    def test_unreviewed_risk_blocks_route_before_any_render_call(self) -> None:
+        manifest = self._style_reference_manifest()
+        manifest["risk"]["assessment"] = "unreviewed"
+        report = validate_manifest(manifest)
+        self.assertFalse(report["valid"])
+        self.assertTrue(
+            any("risk.assessment" in error for error in report["errors"]),
+            report["errors"],
+        )
+        with self.assertRaisesRegex(RecomposerError, "risk.assessment"):
+            build_route_decision(manifest, self.catalog)
+
     def test_style_reference_rejects_factual_source_content(self) -> None:
         manifest = self._style_reference_manifest()
         manifest["content"] = copy.deepcopy(self.manifest["content"])
@@ -808,6 +1015,8 @@ class RecomposerTests(unittest.TestCase):
             draft = create_manifest_draft(image_path, ocr="off")
             report = validate_manifest(draft)
             self.assertFalse(report["valid"])
+            self.assertEqual(draft["intent"]["presentation_locale"], "zh-CN")
+            self.assertEqual(draft["risk"]["assessment"], "unreviewed")
             self.assertTrue(
                 any("Blocking uncertainty" in error for error in report["errors"])
             )

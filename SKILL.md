@@ -19,6 +19,8 @@ This Skill is deliberately multi-directional. It first explores a broad, extensi
 - A radical result must change layout topology and reading path, not merely color, decoration, or background.
 - Keep structural direction separate from visual finish. Recoloring or restyling one topology is not a new layout direction.
 - Do not create brand-specific or source-image-specific default routes.
+- Never infer fidelity risk from keywords in OCR, labels, captions, or free-form notes. Route only from verified structured risk signals and explicit structural fields.
+- Keep routing language-neutral. Presentation locale changes only bounded human-facing copy, never candidate eligibility, scores, fidelity tier, renderer, or recommendation labels as semantic IDs.
 - Never claim pixel fidelity for a model-led whole-canvas result. Faces, skin, before/after evidence, testimonials, and label pixels that must remain exact require locked composition.
 - A local gate can withhold a provider call before invocation. This Skill cannot cancel an in-flight request, control provider billing or refunds, guarantee that a provider returns an artifact, or suppress an artifact that was returned.
 - Never retry an image-provider call automatically. Direction selection and QA failure are not retry authorization.
@@ -61,7 +63,7 @@ python3 "$RECOMPOSER_SKILL_DIR/scripts/recompose.py" inspect INPUT_IMAGE \
   --out JOB_DIR/source-manifest.draft.json --ocr auto
 ```
 
-Complete the draft using [references/manifest-schema.md](references/manifest-schema.md). Separate observed facts, OCR candidates, user-supplied facts, and unresolved values.
+Complete the draft using [references/manifest-schema.md](references/manifest-schema.md). Separate observed facts, OCR candidates, user-supplied facts, and unresolved values. Set `intent.presentation_locale`, complete `risk.assessment`, and record verified risk signals using stable semantic IDs. The draft's `unreviewed` risk state is intentionally not routable.
 
 ### 2. Freeze the content contract and graph
 
@@ -77,7 +79,7 @@ For model-led multi-item work, `content.groups` is required. Do not rely on prox
 python3 "$RECOMPOSER_SKILL_DIR/scripts/recompose.py" validate JOB_DIR/source-manifest.json
 ```
 
-Resolve validation errors before routing. Validation must close the visible-text whitelist, product count, and every required group composition. Record each critical object's source kind, alpha state, edge state, background complexity, and source path in its optional `asset` block. Blocking uncertainties stop the job. If a clean product, face, evidence, or label asset is required for the selected outcome contract but is unavailable, report that limitation rather than reconstructing it invisibly. See [references/embedding-grammar.md](references/embedding-grammar.md).
+Resolve validation errors before routing. Validation must close the visible-text whitelist, product count, every required group composition, and structured risk review. Record each critical object's source kind, alpha state, edge state, background complexity, and source path in its optional `asset` block. Blocking uncertainties stop the job. If a clean product, face, evidence, or label asset is required for the selected outcome contract but is unavailable, report that limitation rather than reconstructing it invisibly. See [references/embedding-grammar.md](references/embedding-grammar.md).
 
 ### 4. Diverge across the direction tree
 
@@ -86,7 +88,7 @@ python3 "$RECOMPOSER_SKILL_DIR/scripts/recompose.py" route \
   JOB_DIR/source-manifest.json --out JOB_DIR/route-decision.json
 ```
 
-The default route produces six structurally diverse candidates. The machine route keeps the wireframe, changed axes, embedding grammar, capacity, risk, and catalog identifiers needed for validation and compilation. Each candidate also carries one bounded Chinese `presentation` with a title, short explanation, composition summary, visual treatment, and content boundary. `direction-board.md` contains only those public presentations and optional Chinese recommendation labels; it must not expose route IDs, catalog labels, metrics, or English implementation terms. Before scoring taste, routing rejects any candidate whose declared capacity cannot hold the real content load. The active seed library remains an expandable idea tree, not a user-facing catalog or one-answer classifier.
+The default route produces six structurally diverse candidates. The machine route keeps the wireframe, changed axes, embedding grammar, capacity, risk, and catalog identifiers needed for validation and compilation. Only after semantic routing is complete, each candidate receives one bounded localized `presentation` with a title, short explanation, composition summary, visual treatment, and content boundary. `direction-board.md` contains only those public presentations and localized recommendation labels; it must not expose route IDs, catalog labels, metrics, wireframes, or internal implementation terms. Switching locale must leave IDs, scores, renderer, fidelity tier, and recommendations unchanged. Before scoring taste, routing rejects any candidate whose declared capacity cannot hold the real content load. The active seed library remains an expandable idea tree, not a user-facing catalog or one-answer classifier.
 
 Compare topology and reading path before finish. Read only the family leaves referenced by the shortlist. `best_overall`, `boldest_change`, and `safest_production` are recommendations for comparison, never an automatic selection. Use [references/direction-tree.md](references/direction-tree.md) and [references/strategy-routing.md](references/strategy-routing.md).
 
@@ -121,7 +123,7 @@ Review these primary artifacts:
 - `reconstruction-plan.json`: selected kernel, joint nodes, renderer authority, embedding grammar, work stages, and escalation policy;
 - `production-layer-spec.json`: exact strings, protected-source contracts, and final semantic-node placement;
 - `render-boundary.json`: immutable prompt/plan bindings, the pre-call checkpoint, one-call authorization policy, and returned-artifact presentation policy;
-- `direction-board.md`: bounded Chinese presentations for the human choice;
+- `direction-board.md`: bounded localized presentations for the human choice;
 - `final-prompt.md`: the concise full-canvas or production rendering brief;
 - `retry-guide.md`: invariant-preserving edit protocol.
 
@@ -197,3 +199,4 @@ Report the outcome contract, selected composition kernel, renderer, locked facts
 - [references/prompt-compiler.md](references/prompt-compiler.md): compiled model and production briefs.
 - [references/render-call-policy.md](references/render-call-policy.md): paid-call boundary, one-use authorization, artifact display, and retry policy.
 - [references/qa.md](references/qa.md): content, association, pixel, and visual checks.
+- [references/localization.md](references/localization.md): locale resources and language-neutral routing invariants.

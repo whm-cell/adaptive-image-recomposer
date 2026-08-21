@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.2",
+  "schema_version": "0.3",
   "job_id": "immune-protein-comparison-demo",
   "source": {
     "path": "/fixture/immune-protein-comparison.png",
@@ -14,7 +14,8 @@
     "output_usage": "social product comparison poster",
     "target_delta": "radical",
     "target_aspect": "landscape",
-    "exact_text_required": true
+    "exact_text_required": true,
+    "presentation_locale": "zh-CN"
   },
   "content": {
     "type": "multi_product_comparison",
@@ -147,6 +148,11 @@
       "white repeated data cards",
       "green star decorations"
     ]
+  },
+  "risk": {
+    "assessment": "human_verified",
+    "signals": [],
+    "notes": []
   },
   "render": {
     "preferred_mode": "auto"
